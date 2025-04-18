@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { formatDate } from "@/lib/dateUtils";
 import { useQuery } from "@tanstack/react-query";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
 
 interface TimeSliderProps {
   currentDate: Date;
@@ -90,6 +93,68 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
     }
   };
 
+  // Calendar state
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<Date | undefined>(currentDate);
+  
+  // Date selection handlers
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      onDateChange(date);
+      setCalendarOpen(false);
+    }
+  };
+  
+  // Calculate the list of dates with events for the selected month
+  const getDatesWithEvents = () => {
+    if (!selectedMonth) return [];
+    
+    const year = selectedMonth.getFullYear();
+    const month = selectedMonth.getMonth();
+    
+    // First day of selected month
+    const firstDay = new Date(year, month, 1);
+    // Last day of selected month
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Get all dates in the selected month that fall within the range
+    const dates = [];
+    const currentDay = new Date(firstDay);
+    
+    while (currentDay <= lastDay) {
+      if (currentDay >= startDate && currentDay <= endDate) {
+        dates.push(new Date(currentDay));
+      }
+      currentDay.setDate(currentDay.getDate() + 1);
+    }
+    
+    return dates;
+  };
+  
+  // Calculate current period - for displaying the selected month/date
+  const currentMonthInfo = (() => {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June', 
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return {
+      month: monthNames[currentDate.getMonth()],
+      year: currentDate.getFullYear(),
+      day: currentDate.getDate()
+    };
+  })();
+  
+  // When month changes, update relevant dates
+  useEffect(() => {
+    // When initially selected month changes, update the calendar
+    if (selectedMonth && selectedMonth.getMonth() !== currentDate.getMonth()) {
+      setSelectedMonth(currentDate);
+    }
+  }, [currentDate]);
+  
+  // Highlight dates that have events
+  const datesWithEvents = getDatesWithEvents();
+  
   // Speed control handlers
   const increaseSpeed = () => {
     setSpeed(prev => Math.min(prev + 0.25, 2)); // Maximum 2 days per second
@@ -159,13 +224,42 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
           </div>
           
           <div className="flex-shrink-0 space-x-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="border border-gray-300"
-            >
-              <i className="fas fa-calendar-alt mr-1"></i> Select Date
-            </Button>
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="border border-gray-300"
+                >
+                  <i className="fas fa-calendar-alt mr-1"></i> {format(currentDate, "MMM d, yyyy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={currentDate}
+                  onSelect={handleDateSelect}
+                  onMonthChange={setSelectedMonth}
+                  month={selectedMonth}
+                  defaultMonth={currentDate}
+                  fromDate={startDate}
+                  toDate={endDate}
+                  numberOfMonths={1}
+                  modifiers={{
+                    highlighted: datesWithEvents
+                  }}
+                  modifiersClassNames={{
+                    highlighted: "bg-primary text-primary-foreground"
+                  }}
+                  className="rounded-md border"
+                  footer={
+                    <div className="px-4 pb-2 pt-0 text-xs text-center text-gray-500">
+                      Shows highlighted in color
+                    </div>
+                  }
+                />
+              </PopoverContent>
+            </Popover>
             <Button 
               size="sm"
               className="bg-primary text-white hover:bg-primary-dark"
