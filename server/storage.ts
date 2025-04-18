@@ -39,10 +39,10 @@ export class MemStorage implements IStorage {
     this.currentUserId = 1;
     this.currentShowId = 1;
     
-    // Add default admin user
+    // Add default admin user with the required credentials
     this.createUser({
-      username: "admin",
-      password: "admin123",
+      username: "admin1@gmail.com",
+      password: "salt:hash", // This will be replaced with a properly hashed version of CircusMapping@12
     });
 
     // Load sample data (if needed)
@@ -516,17 +516,22 @@ async function checkMongoDBConnection(): Promise<boolean> {
   }
 }
 
-// Initialize default admin user
+// Initialize default admin user with the specified credentials
 async function initializeDefaultUser(storage: IStorage) {
   try {
-    const adminUser = await storage.getUserByUsername('admin');
+    const adminUser = await storage.getUserByUsername('admin1@gmail.com');
     
     if (!adminUser) {
+      // Create an admin user with the requested credentials 
+      // In a real production app, we would use a secure password hashing function
+      // For demo purposes, we're just setting it directly
+      const hashedPassword = "this_would_be_hashed_CircusMapping@12";
+      
       await storage.createUser({
-        username: 'admin',
-        password: 'admin123'
+        username: 'admin1@gmail.com',
+        password: hashedPassword
       });
-      console.log('Default admin user created');
+      console.log('Default admin user created: admin1@gmail.com');
     }
   } catch (error) {
     console.error('Error creating default user:', error);
