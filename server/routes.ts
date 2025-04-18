@@ -111,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let user;
       try {
         user = await User.findOne({ username });
-      } catch (mongoError) {
+      } catch (mongoError: any) {
         // MongoDB error, try fallback storage
         console.log("MongoDB error, using fallback storage for login:", mongoError.message);
         user = await storage.getUserByUsername(username);
