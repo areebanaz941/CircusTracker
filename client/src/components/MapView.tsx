@@ -80,27 +80,35 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
     
     // Find shows for current date
     const currentDateString = currentDate.toISOString().split('T')[0];
-    const activeShows = shows.filter(show => {
-      const showDateString = new Date(show.showDate).toISOString().split('T')[0];
-      return showDateString === currentDateString;
-    });
     
-    // Add markers for active shows
-    activeShows.forEach(show => {
+    // Add markers for ALL shows, but style differently based on date
+    shows.forEach(show => {
       const { latitude, longitude, circusName, venueName, address, city, state, zip, showDate } = show;
+      const showDateString = new Date(show.showDate).toISOString().split('T')[0];
+      const isActive = showDateString === currentDateString;
       
       const latLng: [number, number] = [parseFloat(latitude), parseFloat(longitude)];
-      const marker = L.marker(latLng, { icon: circusIcon }).addTo(map);
       
+      // Create the marker with different opacity based on if it's active for current date
+      const marker = L.marker(latLng, { 
+        icon: circusIcon,
+        opacity: isActive ? 1.0 : 0.6
+      }).addTo(map);
+      
+      // Different popup content based on active status
       const popupContent = `
         <div class="circus-popup">
-          <div class="font-bold text-primary">${circusName}</div>
+          <div class="font-bold ${isActive ? 'text-primary' : 'text-gray-500'}">${circusName}</div>
           <div class="font-medium">${venueName}</div>
           <div>${address}</div>
           <div>${city}, ${state} ${zip}</div>
           <div class="text-sm mt-2">
-            <span class="font-medium">Show date:</span> ${formatDate(new Date(showDate))}
+            <span class="font-medium">${isActive ? 'Show date' : 'Show date'}:</span> ${formatDate(new Date(showDate))}
           </div>
+          ${isActive ? 
+            '<div class="text-xs mt-1 text-primary font-semibold">Active today!</div>' : 
+            ''
+          }
         </div>
       `;
       
@@ -108,40 +116,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
       markersRef.current.push(marker);
     });
     
-    // If no active shows, try to find the next upcoming show
-    if (activeShows.length === 0) {
-      const upcomingShows = shows
-        .filter(show => new Date(show.showDate) > currentDate)
-        .sort((a, b) => new Date(a.showDate).getTime() - new Date(b.showDate).getTime());
-      
-      if (upcomingShows.length > 0) {
-        const nextShow = upcomingShows[0];
-        const { latitude, longitude, circusName, venueName, address, city, state, zip, showDate } = nextShow;
-        
-        const latLng: [number, number] = [parseFloat(latitude), parseFloat(longitude)];
-        const marker = L.marker(latLng, { 
-          icon: circusIcon,
-          opacity: 0.6
-        }).addTo(map);
-        
-        const popupContent = `
-          <div class="circus-popup">
-            <div class="font-bold text-gray-500">${circusName}</div>
-            <div class="font-medium">${venueName}</div>
-            <div>${address}</div>
-            <div>${city}, ${state} ${zip}</div>
-            <div class="text-sm mt-2">
-              <span class="font-medium">Upcoming show:</span> ${formatDate(new Date(showDate))}
-            </div>
-          </div>
-        `;
-        
-        marker.bindPopup(popupContent);
-        markersRef.current.push(marker);
-      }
-    }
-    
-    // If we have active shows, fit the map to show all markers
+    // Fit the map to show all markers
     if (markersRef.current.length > 0) {
       const group = L.featureGroup(markersRef.current);
       map.fitBounds(group.getBounds(), { padding: [50, 50] });
@@ -166,7 +141,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
     <div 
       ref={mapRef} 
       className="map-container w-full"
-      style={{ height: 'calc(100vh - 4rem)' }}
+      style={{ height: 'calc(100vh - 164px)' }} // Account for the fixed header (64px) and time slider (100px)
     >
       {isLoading && (
         <div className="flex justify-center items-center h-full w-full bg-gray-100 bg-opacity-70 absolute top-0 left-0 z-10">

@@ -18,21 +18,25 @@
 
 @layer components {
   .map-container {
-    height: calc(100vh - 64px);
+    height: calc(100vh - 164px); /* Account for header (64px) and time slider (100px) */
   }
   
-  @media (min-width: 1024px) {
-    .map-container {
-      height: 100vh;
-    }
+  /* Leaflet styles */
+  .custom-circus-icon {
+    background: none !important;
+    border: none !important;
   }
   
-  .circus-popup .leaflet-popup-content-wrapper {
-    @apply rounded-lg bg-white shadow-md;
+  .leaflet-popup-content-wrapper {
+    @apply rounded-lg;
   }
   
-  .circus-popup .leaflet-popup-content {
-    @apply m-3;
+  .leaflet-popup-content {
+    @apply p-2;
+  }
+  
+  .circus-popup {
+    @apply p-2;
   }
 }
 
