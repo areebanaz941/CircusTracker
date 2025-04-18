@@ -1,57 +1,8 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
-// Using local MongoDB (since connection to remote failed)
-const MONGODB_URI = 'mongodb://localhost:27017/circus_tracker';
-
-// Mock User Model for fallback when MongoDB is unavailable
-class MockUserModel {
-  static async findOne(query: { username?: string; [key: string]: any }) {
-    if (query.username === 'admin1@gmail.com') {
-      return {
-        _id: 'admin-id',
-        username: 'admin1@gmail.com',
-        password: 'this_would_be_hashed_CircusMapping@12',
-        toObject: () => ({
-          _id: 'admin-id',
-          username: 'admin1@gmail.com',
-          password: 'this_would_be_hashed_CircusMapping@12'
-        })
-      };
-    }
-    return null;
-  }
-
-  static async findById(id: string) {
-    if (id === 'admin-id') {
-      return {
-        _id: 'admin-id',
-        username: 'admin1@gmail.com',
-        password: 'this_would_be_hashed_CircusMapping@12',
-        toObject: () => ({
-          _id: 'admin-id',
-          username: 'admin1@gmail.com',
-          password: 'this_would_be_hashed_CircusMapping@12'
-        })
-      };
-    }
-    return null;
-  }
-
-  constructor(data: any) {
-    Object.assign(this, data);
-  }
-
-  async save() {
-    return {
-      _id: 'admin-id',
-      ...this,
-      toObject: () => ({
-        _id: 'admin-id',
-        ...this
-      })
-    };
-  }
-}
+// MongoDB Connection URI
+const MONGODB_URI = 'mongodb+srv://areebanaz4848:Pakistan123@cluster0.zdijmho.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 // Connect to MongoDB
 export const connectDB = async () => {
@@ -61,17 +12,28 @@ export const connectDB = async () => {
       serverSelectionTimeoutMS: 5000, // 5 seconds timeout instead of 30
       connectTimeoutMS: 10000, // 10 seconds connection timeout
     });
-    console.log('MongoDB Connected...');
+    console.log('MongoDB Connected Successfully...');
+    return true;
   } catch (err: any) {
     console.error('MongoDB connection error:', err.message);
     console.log('Using in-memory fallback storage...');
+    return false;
   }
 };
+
+// Hash password function
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
 
 // Define MongoDB schemas and models
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
-  password: { type: String, required: true }
+  password: { type: String, required: true },
+  role: { type: String, default: 'user' },
+  createdAt: { type: Date, default: Date.now }
 });
 
 const circusShowSchema = new mongoose.Schema({
@@ -92,26 +54,37 @@ const fileUploadSchema = new mongoose.Schema({
   fileName: { type: String, required: true },
   uploadDate: { type: Date, default: Date.now },
   status: { type: String, enum: ['success', 'error'], required: true },
-  recordCount: { type: Number, required: true }
+  recordCount: { type: Number, required: true },
+  fileContent: { type: Buffer }, // Store the actual file content
+  fileType: { type: String } // Store the file type (csv or excel)
 });
 
-// Try to use Mongoose models, if that fails use the mock models
-let UserModel: any;
-let CircusShowModel: any;
-let FileUploadModel: any;
+// Create models
+export const User = mongoose.models.User || mongoose.model('User', userSchema);
+export const CircusShow = mongoose.models.CircusShow || mongoose.model('CircusShow', circusShowSchema);
+export const FileUpload = mongoose.models.FileUpload || mongoose.model('FileUpload', fileUploadSchema);
 
-try {
-  UserModel = mongoose.model('User', userSchema);
-  CircusShowModel = mongoose.model('CircusShow', circusShowSchema);
-  FileUploadModel = mongoose.model('FileUpload', fileUploadSchema);
-} catch (err) {
-  console.log('Using mock models due to Mongoose error');
-  UserModel = MockUserModel;
-  CircusShowModel = {};
-  FileUploadModel = {};
-}
-
-// Create and export models
-export const User = UserModel;
-export const CircusShow = CircusShowModel;
-export const FileUpload = FileUploadModel;
+// Ensure admin user exists
+export const ensureAdminExists = async () => {
+  try {
+    const adminExists = await User.findOne({ username: 'admin1@gmail.com' });
+    
+    if (!adminExists) {
+      const password = 'CircusMapping@12';
+      const hashedPassword = hashPassword(password);
+      
+      const adminUser = new User({
+        username: 'admin1@gmail.com',
+        password: hashedPassword,
+        role: 'admin'
+      });
+      
+      await adminUser.save();
+      console.log('Admin user created successfully in MongoDB');
+    } else {
+      console.log('Admin user already exists in MongoDB');
+    }
+  } catch (error) {
+    console.error('Error ensuring admin exists:', error);
+  }
+};

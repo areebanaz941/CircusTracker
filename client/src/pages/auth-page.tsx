@@ -33,7 +33,7 @@ const AuthPage: React.FC = () => {
 
   // Check if already logged in
   useEffect(() => {
-    if (localStorage.getItem("isAuthenticated") === "true") {
+    if (localStorage.getItem("token")) {
       navigate("/admin");
     }
   }, [navigate]);
@@ -60,6 +60,8 @@ const AuthPage: React.FC = () => {
     onSuccess: (data) => {
       // Set authentication state in localStorage
       localStorage.setItem("isAuthenticated", "true");
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
       
       // Display success message
       toast({
@@ -103,6 +105,9 @@ const AuthPage: React.FC = () => {
               <p className="mt-2 text-sm text-gray-600">
                 Sign in to access the admin dashboard
               </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Default credentials: admin1@gmail.com / CircusMapping@12
+              </p>
             </div>
 
             <div className="mt-8">
@@ -115,7 +120,7 @@ const AuthPage: React.FC = () => {
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <Input placeholder="admin@example.com" {...field} />
+                          <Input placeholder="admin1@gmail.com" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

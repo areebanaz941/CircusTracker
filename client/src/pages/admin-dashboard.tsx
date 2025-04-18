@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,11 +27,11 @@ import {
   Card, 
   CardContent, 
   CardDescription, 
-  CardFooter, 
   CardHeader, 
   CardTitle 
 } from "@/components/ui/card";
 import { formatDate } from "@/lib/dateUtils";
+import { Download } from "lucide-react";
 
 // Manual circus show entry schema
 const circusShowSchema = z.object({
@@ -53,10 +53,39 @@ const AdminDashboard: React.FC = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("upload");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check authentication on load
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/auth");
+    } else {
+      setIsAuthenticated(true);
+    }
+  }, [navigate]);
 
   // Get file uploads
-  const { data: uploads } = useQuery<any[]>({
+  const { data: uploads, isLoading: uploadsLoading } = useQuery({
     queryKey: ["/api/uploads"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication required");
+      
+      const response = await fetch("/api/uploads", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to fetch uploads");
+      }
+      
+      return response.json();
+    },
+    enabled: isAuthenticated
   });
 
   // Setup manual entry form
@@ -78,17 +107,28 @@ const AdminDashboard: React.FC = () => {
   // Create show mutation
   const createShowMutation = useMutation({
     mutationFn: async (data: CircusShowFormValues) => {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication required");
+      
       const values = {
         ...data,
-        showDate: new Date(data.showDate),
-        fileName: "manual-entry",
+        showDate: new Date(data.showDate)
       };
       
-      const response = await apiRequest("POST", "/api/shows", values);
+      const response = await fetch("/api/shows", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(values),
+      });
+      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create show");
       }
+      
       return await response.json();
     },
     onSuccess: () => {
@@ -117,8 +157,16 @@ const AdminDashboard: React.FC = () => {
   // Logout handler
   const handleLogout = async () => {
     try {
+      localStorage.removeItem("token");
+      localStorage.removeItem("isAuthenticated");
+      localStorage.removeItem("user");
+      
+      // Call logout API
       await apiRequest("POST", "/api/logout");
+      
+      // Navigate to home
       navigate("/");
+      
       toast({
         title: "Logged out",
         description: "You have been successfully logged out",
@@ -140,7 +188,20 @@ const AdminDashboard: React.FC = () => {
   // Delete file and associated shows
   const deleteFileMutation = useMutation({
     mutationFn: async (fileName: string) => {
-      await apiRequest("DELETE", `/api/uploads/${encodeURIComponent(fileName)}`);
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication required");
+      
+      const response = await fetch(`/api/uploads/${encodeURIComponent(fileName)}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to delete file");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/uploads"] });
@@ -162,11 +223,57 @@ const AdminDashboard: React.FC = () => {
     }
   });
 
+  // Handle file deletion
   const handleDelete = (fileName: string) => {
     if (confirm(`Are you sure you want to delete ${fileName} and all associated show data?`)) {
       deleteFileMutation.mutate(fileName);
     }
   };
+
+  // Handle file download
+  const handleDownload = async (fileName: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication required");
+      
+      const response = await fetch(`/api/uploads/${encodeURIComponent(fileName)}/download`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to download file");
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Download started",
+        description: `Downloading ${fileName}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Download failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (!isAuthenticated) {
+    return null; // Don't render until authentication is confirmed
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -383,7 +490,9 @@ const AdminDashboard: React.FC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {uploads && uploads.length > 0 ? (
+                {uploadsLoading ? (
+                  <div className="py-8 text-center text-gray-500">Loading uploads...</div>
+                ) : uploads && uploads.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
@@ -396,7 +505,7 @@ const AdminDashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {uploads.map((upload, index) => (
+                        {uploads.map((upload: any, index: number) => (
                           <tr key={index}>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
@@ -418,6 +527,14 @@ const AdminDashboard: React.FC = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{upload.recordCount}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <Button 
+                                variant="ghost" 
+                                className="text-primary hover:text-primary-dark mr-3 p-0"
+                                onClick={() => handleDownload(upload.fileName)}
+                              >
+                                <Download className="h-4 w-4 mr-1" />
+                                Download
+                              </Button>
                               <Button 
                                 variant="ghost" 
                                 className="text-red-600 hover:text-red-900 p-0"
@@ -447,7 +564,7 @@ const AdminDashboard: React.FC = () => {
       <footer className="bg-white border-t border-gray-200 py-4">
         <div className="mx-auto px-4 sm:px-6 lg:px-8">
           <p className="text-center text-sm text-gray-500">
-            &copy; 2023 Europa SC. All rights reserved.
+            &copy; 2025 Europa SC. All rights reserved.
           </p>
         </div>
       </footer>

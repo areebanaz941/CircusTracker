@@ -1,8 +1,13 @@
 import { CircusShowWithCoords, CircusVenue } from '@shared/schema';
-import { User, CircusShow, FileUpload, connectDB } from './db';
+import { User, CircusShow, FileUpload, connectDB, ensureAdminExists } from './db';
 
-// Try to connect to MongoDB, but we'll provide a fallback
-connectDB();
+// Try to connect to MongoDB
+connectDB().then(connected => {
+  if (connected) {
+    // Ensure admin user exists in MongoDB
+    ensureAdminExists();
+  }
+});
 
 // Storage interface definition
 export interface IStorage {
@@ -14,13 +19,14 @@ export interface IStorage {
   // Show methods
   getAllShows(): Promise<CircusShowWithCoords[]>;
   getShowsByDate(date: string): Promise<CircusShowWithCoords[]>;
-  createShow(show: any & { fileName: string }): Promise<any>;
+  createShow(show: any): Promise<any>;
   getShowDateRange(): Promise<{ startDate: string; endDate: string }>;
   getVenues(): Promise<CircusVenue[]>;
   
   // File upload methods
   getFileUploads(): Promise<any[]>;
-  createFileUpload(upload: any): Promise<any>;
+  getFileById(fileName: string): Promise<any | undefined>;
+  createFileUpload(upload: any, fileBuffer?: Buffer): Promise<any>;
   deleteFileAndShows(fileName: string): Promise<void>;
 }
 
@@ -39,10 +45,11 @@ export class MemStorage implements IStorage {
     this.currentUserId = 1;
     this.currentShowId = 1;
     
-    // Add default admin user with the required credentials
+    // Add default admin user
     this.createUser({
       username: "admin1@gmail.com",
       password: "salt:hash", // This will be replaced with a properly hashed version of CircusMapping@12
+      role: "admin"
     });
 
     // Load sample data (if needed)
@@ -105,7 +112,8 @@ export class MemStorage implements IStorage {
         fileName: "sample.csv",
         uploadDate: new Date(),
         status: "success",
-        recordCount: sampleShows.length
+        recordCount: sampleShows.length,
+        fileType: "csv"
       });
 
     } catch (error) {
@@ -129,7 +137,8 @@ export class MemStorage implements IStorage {
     this.currentUserId++;
     const newUser = { 
       _id: id,
-      ...user
+      ...user,
+      createdAt: new Date()
     };
     this.users.set(id, newUser);
     return { ...newUser };
@@ -252,10 +261,15 @@ export class MemStorage implements IStorage {
     return [...this.fileUploads];
   }
   
-  async createFileUpload(upload: any): Promise<any> {
+  async getFileById(fileName: string): Promise<any | undefined> {
+    return this.fileUploads.find(upload => upload.fileName === fileName);
+  }
+  
+  async createFileUpload(upload: any, fileBuffer?: Buffer): Promise<any> {
     const newUpload = {
       _id: Date.now().toString(),
-      ...upload
+      ...upload,
+      fileContent: fileBuffer || Buffer.from([]), // Store the file content
     };
     this.fileUploads.push(newUpload);
     return { ...newUpload };
@@ -472,18 +486,45 @@ export class MongoDBStorage implements IStorage {
   async getFileUploads(): Promise<any[]> {
     try {
       const uploads = await FileUpload.find().sort({ uploadDate: -1 });
-      return uploads.map(upload => upload.toObject());
+      return uploads.map(upload => {
+        const uploadObj = upload.toObject();
+        // Don't return the file content in the list
+        delete uploadObj.fileContent;
+        return uploadObj;
+      });
     } catch (error) {
       console.error('Error getting file uploads:', error);
       return [];
     }
   }
   
-  async createFileUpload(upload: any): Promise<any> {
+  async getFileById(fileName: string): Promise<any | undefined> {
     try {
-      const newUpload = new FileUpload(upload);
+      const upload = await FileUpload.findOne({ fileName });
+      return upload ? upload.toObject() : undefined;
+    } catch (error) {
+      console.error('Error getting file by ID:', error);
+      return undefined;
+    }
+  }
+  
+  async createFileUpload(upload: any, fileBuffer?: Buffer): Promise<any> {
+    try {
+      // Add the file buffer to the upload record
+      const fileUploadData = {
+        ...upload,
+        fileContent: fileBuffer, // Store the actual file content
+        fileType: upload.fileName.split('.').pop().toLowerCase() // Extract file type from extension
+      };
+      
+      const newUpload = new FileUpload(fileUploadData);
       const savedUpload = await newUpload.save();
-      return savedUpload.toObject();
+      
+      // Remove the file content from the returned object for API responses
+      const uploadObj = savedUpload.toObject();
+      delete uploadObj.fileContent;
+      
+      return uploadObj;
     } catch (error) {
       console.error('Error creating file upload:', error);
       throw error;
@@ -516,28 +557,6 @@ async function checkMongoDBConnection(): Promise<boolean> {
   }
 }
 
-// Initialize default admin user with the specified credentials
-async function initializeDefaultUser(storage: IStorage) {
-  try {
-    const adminUser = await storage.getUserByUsername('admin1@gmail.com');
-    
-    if (!adminUser) {
-      // Create an admin user with the requested credentials 
-      // In a real production app, we would use a secure password hashing function
-      // For demo purposes, we're just setting it directly
-      const hashedPassword = "this_would_be_hashed_CircusMapping@12";
-      
-      await storage.createUser({
-        username: 'admin1@gmail.com',
-        password: hashedPassword
-      });
-      console.log('Default admin user created: admin1@gmail.com');
-    }
-  } catch (error) {
-    console.error('Error creating default user:', error);
-  }
-}
-
 // Choose the appropriate storage implementation 
 let storage: IStorage;
 
@@ -551,9 +570,6 @@ let storage: IStorage;
     console.log('Using in-memory storage');
     storage = new MemStorage();
   }
-  
-  // Initialize default user with the selected storage
-  await initializeDefaultUser(storage);
 })();
 
 // Export the storage instance

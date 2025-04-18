@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import multer from "multer";
 import { processFile } from "./services/fileParser";
 import { z } from "zod";
-import { fileUploadSchema, insertCircusShowSchema, insertUserSchema } from "@shared/schema";
+import { fileUploadSchema, insertCircusShowSchema } from "@shared/schema";
 import { User } from "./db";
 import crypto from "crypto";
 
@@ -24,9 +24,9 @@ const upload = multer({
     
     if (
       allowedTypes.includes(file.mimetype) ||
-      file.originalname.endsWith(".csv") ||
-      file.originalname.endsWith(".xlsx") ||
-      file.originalname.endsWith(".xls")
+      file.originalname.toLowerCase().endsWith(".csv") ||
+      file.originalname.toLowerCase().endsWith(".xlsx") ||
+      file.originalname.toLowerCase().endsWith(".xls")
     ) {
       cb(null, true);
     } else {
@@ -84,23 +84,7 @@ const requireAuth = async (req: Request, res: Response, next: Function) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Initialize admin user
-  try {
-    const adminExists = await User.findOne({ username: 'admin1@gmail.com' });
-    
-    if (!adminExists) {
-      // Create admin user with the requested credentials
-      const adminUser = new User({
-        username: 'admin1@gmail.com',
-        password: hashPassword('CircusMapping@12')
-      });
-      
-      await adminUser.save();
-      console.log('Admin user created');
-    }
-  } catch (error) {
-    console.error('Error creating admin user:', error);
-  }
+  // Initialize admin user is now handled in storage.ts and db.ts
   
   // Login endpoint
   app.post("/api/login", async (req, res) => {
@@ -115,7 +99,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token: 'admin-token',
         user: {
           id: 'admin-id',
-          username: 'admin1@gmail.com'
+          username: 'admin1@gmail.com',
+          role: 'admin'
         }
       });
     }
@@ -161,7 +146,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token: 'admin-token',
         user: {
           id: user._id,
-          username: user.username
+          username: user.username,
+          role: user.role || 'user'
         }
       });
     } catch (error) {
@@ -192,7 +178,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hashedPassword = hashPassword(password);
       const newUser = new User({
         username,
-        password: hashedPassword
+        password: hashedPassword,
+        role: 'user'
       });
       
       await newUser.save();
@@ -257,11 +244,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Add show manually (protected route)
-  app.post("/api/shows", async (req, res) => {
+  app.post("/api/shows", requireAuth, async (req, res) => {
     try {
       const showData = {
         ...req.body,
-        showDate: new Date(req.body.showDate)
+        showDate: new Date(req.body.showDate),
+        fileName: 'manual-entry.csv' // for manually added shows
       };
       
       const newShow = await storage.createShow(showData);
@@ -272,7 +260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Upload file
-  app.post("/api/uploads", upload.single("file"), async (req, res) => {
+  app.post("/api/uploads", requireAuth, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -280,6 +268,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const fileName = req.file.originalname;
       const fileBuffer = req.file.buffer;
+      
+      console.log(`Processing file: ${fileName}, size: ${fileBuffer.length} bytes`);
       
       // Process file and insert shows
       const result = await processFile(fileBuffer, fileName);
@@ -291,17 +281,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Insert each show
       for (const show of result.data) {
         try {
-          const validatedShow = insertCircusShowSchema.parse(show);
-          await storage.createShow({
-            ...validatedShow,
-            fileName,
+          const validatedShow = insertCircusShowSchema.parse({
+            ...show,
+            fileName // Add fileName to track the source
           });
+          
+          await storage.createShow(validatedShow);
         } catch (error) {
           console.error("Error inserting show:", error);
         }
       }
       
-      // Create file upload record
+      // Create file upload record with the actual file content
       const fileUpload = fileUploadSchema.parse({
         fileName,
         uploadDate: new Date(),
@@ -309,7 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recordCount: result.data.length,
       });
       
-      await storage.createFileUpload(fileUpload);
+      await storage.createFileUpload(fileUpload, fileBuffer);
       
       res.json({ 
         success: true, 
@@ -330,7 +321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             recordCount: 0,
           });
           
-          await storage.createFileUpload(fileUpload);
+          await storage.createFileUpload(fileUpload, req.file.buffer);
         }
       } catch (e) {
         console.error("Error creating file upload record:", e);
@@ -344,7 +335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Get upload history
-  app.get("/api/uploads", async (req, res) => {
+  app.get("/api/uploads", requireAuth, async (req, res) => {
     try {
       const uploads = await storage.getFileUploads();
       res.json(uploads);
@@ -353,8 +344,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Download a specific file
+  app.get("/api/uploads/:fileName/download", requireAuth, async (req, res) => {
+    try {
+      const { fileName } = req.params;
+      const decodedFileName = decodeURIComponent(fileName);
+      
+      // Get the file from FileUpload collection
+      const upload = await storage.getFileById(decodedFileName);
+      
+      if (!upload || !upload.fileContent) {
+        return res.status(404).json({ message: "File not found" });
+      }
+      
+      // Set appropriate headers based on file type
+      const fileType = upload.fileType || 'csv';
+      let contentType = 'text/csv';
+      
+      if (fileType === 'xlsx') {
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      } else if (fileType === 'xls') {
+        contentType = 'application/vnd.ms-excel';
+      }
+      
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${decodedFileName}"`);
+      
+      // Send the file content
+      res.send(upload.fileContent);
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+  
   // Delete upload and associated shows
-  app.delete("/api/uploads/:fileName", async (req, res) => {
+  app.delete("/api/uploads/:fileName", requireAuth, async (req, res) => {
     try {
       const { fileName } = req.params;
       await storage.deleteFileAndShows(decodeURIComponent(fileName));

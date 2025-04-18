@@ -6,7 +6,9 @@ import { z } from "zod";
 export const userSchema = z.object({
   _id: z.any().optional(), // MongoDB ObjectId
   username: z.string(),
-  password: z.string()
+  password: z.string(),
+  role: z.string().optional(), // Added role field
+  createdAt: z.date().optional() // Added creation date
 });
 
 // Circus show schema
@@ -31,7 +33,9 @@ export const fileUploadSchema = z.object({
   fileName: z.string(),
   uploadDate: z.date(),
   status: z.enum(["success", "error"]),
-  recordCount: z.number()
+  recordCount: z.number(),
+  fileContent: z.instanceof(Buffer).optional(), // Add file content field
+  fileType: z.string().optional() // Add file type field (csv, xlsx, xls)
 });
 
 // Define types
@@ -40,9 +44,9 @@ export type CircusShow = z.infer<typeof circusShowSchema>;
 export type FileUpload = z.infer<typeof fileUploadSchema>;
 
 // Schema variants for insert operations
-export const insertUserSchema = userSchema.omit({ _id: true });
+export const insertUserSchema = userSchema.omit({ _id: true, createdAt: true });
 export const insertCircusShowSchema = circusShowSchema.omit({ _id: true, uploadedAt: true });
-export const insertFileUploadSchema = fileUploadSchema.omit({ _id: true });
+export const insertFileUploadSchema = fileUploadSchema.omit({ _id: true, fileContent: true, fileType: true });
 
 // Define insert types
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -65,3 +69,11 @@ export type CircusVenue = {
   endDate: Date;
   coords: [number, number];
 };
+
+// Extended file upload schema for API operations that include file content
+export const extendedFileUploadSchema = fileUploadSchema.extend({
+  fileContent: z.instanceof(Buffer).optional(),
+  fileType: z.string().optional()
+});
+
+export type ExtendedFileUpload = z.infer<typeof extendedFileUploadSchema>;

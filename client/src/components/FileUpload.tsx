@@ -1,19 +1,16 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, FileType2, FileX, CheckCircle2, RotateCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 const FileUpload: React.FC = () => {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const queryClient = useQueryClient();
+  const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // File upload mutation
   const uploadMutation = useMutation({
@@ -21,23 +18,35 @@ const FileUpload: React.FC = () => {
       setIsUploading(true);
       setUploadProgress(0);
       
-      // Simulate progress for better UX
+      // Simulate progress (in a real app, you'd use actual progress events)
       const progressInterval = setInterval(() => {
-        setUploadProgress((prevProgress) => {
-          const newProgress = prevProgress + Math.random() * 15;
-          return newProgress > 90 ? 90 : newProgress;
+        setUploadProgress((prev) => {
+          const newProgress = prev + 5;
+          return newProgress >= 90 ? 90 : newProgress;
         });
-      }, 500);
+      }, 300);
       
       try {
-        const response = await apiRequest("POST", "/api/uploads", formData);
+        // Get token from localStorage
+        const token = localStorage.getItem("token");
         
-        // Clear interval before proceeding
+        if (!token) {
+          throw new Error("Authentication required. Please log in again.");
+        }
+        
+        const response = await fetch("/api/uploads", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          },
+          body: formData,
+        });
+        
         clearInterval(progressInterval);
         
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.message || "Upload failed");
+          throw new Error(errorData.message || "File upload failed");
         }
         
         setUploadProgress(100);
@@ -46,179 +55,143 @@ const FileUpload: React.FC = () => {
         clearInterval(progressInterval);
         throw error;
       } finally {
-        setIsUploading(false);
+        setTimeout(() => {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }, 1000);
       }
     },
     onSuccess: (data) => {
-      setSelectedFile(null);
+      setFile(null);
       
-      toast({
-        title: "Upload Successful",
-        description: `${data.recordCount} records have been processed.`,
-      });
-      
-      // Invalidate cached data to refresh
+      // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ["/api/uploads"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shows"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shows/venues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shows/date-range"] });
       
-      // Reset progress after animation completes
-      setTimeout(() => {
-        setUploadProgress(0);
-      }, 2000);
+      toast({
+        title: "Upload successful",
+        description: `Successfully processed ${data.recordCount} records`,
+      });
     },
     onError: (error: Error) => {
-      setErrorMessage(error.message);
-      setUploadProgress(0);
-      
       toast({
-        title: "Upload Failed",
+        title: "Upload failed",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  // Handle file selection
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    setSelectedFile(file);
-    setErrorMessage("");
+  // Handle file change
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
   };
 
   // Handle form submission
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     
-    if (!selectedFile) {
-      setErrorMessage("Please select a file to upload");
+    if (!file) {
+      toast({
+        title: "No file selected",
+        description: "Please select a CSV or Excel file to upload.",
+        variant: "destructive",
+      });
       return;
     }
     
-    // Check file type
-    const fileExtension = selectedFile.name.split('.').pop()?.toLowerCase();
-    if (!['csv', 'xlsx', 'xls'].includes(fileExtension || '')) {
-      setErrorMessage("Please select a CSV or Excel file");
+    // Check file extension
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !['csv', 'xlsx', 'xls'].includes(extension)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload a CSV or Excel file.",
+        variant: "destructive",
+      });
       return;
     }
     
     // Create form data
     const formData = new FormData();
-    formData.append("file", selectedFile);
+    formData.append("file", file);
     
-    // Execute upload
+    // Send to server
     uploadMutation.mutate(formData);
   };
 
-  // Reset file selection
-  const handleCancelSelection = () => {
-    setSelectedFile(null);
-    setErrorMessage("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
   return (
-    <div className="w-full">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* File upload area */}
-        <div 
-          className={`border-2 border-dashed rounded-lg p-8 text-center ${
-            isUploading
-              ? "bg-gray-50 border-gray-300" 
-              : errorMessage 
-                ? "bg-red-50 border-red-300" 
-                : "bg-blue-50 border-blue-300 hover:bg-blue-100 cursor-pointer"
-          } transition-colors`}
-          onClick={() => !isUploading && fileInputRef.current?.click()}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={handleFileChange}
-            className="hidden"
-            disabled={isUploading}
-          />
+    <Card className="border-dashed border-2 hover:border-primary transition-colors">
+      <CardContent className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex flex-col items-center justify-center py-6">
+            <svg
+              className="w-12 h-12 text-gray-400 mb-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              ></path>
+            </svg>
+            
+            <p className="mb-2 text-sm text-gray-500">
+              <span className="font-semibold">Click to upload</span> or drag and drop
+            </p>
+            <p className="text-xs text-gray-500">CSV or Excel files only</p>
+            
+            <input
+              id="file-upload"
+              type="file"
+              className="hidden"
+              accept=".csv,.xlsx,.xls"
+              onChange={handleFileChange}
+              disabled={isUploading}
+            />
+            
+            <label
+              htmlFor="file-upload"
+              className="mt-4 px-4 py-2 border border-gray-300 rounded-md text-sm cursor-pointer hover:bg-gray-50"
+            >
+              Select File
+            </label>
+            
+            {file && (
+              <div className="mt-3 text-sm text-gray-600">
+                Selected: <span className="font-medium">{file.name}</span>
+              </div>
+            )}
+          </div>
           
-          {/* Upload in progress */}
-          {isUploading ? (
-            <div className="space-y-4">
-              <RotateCw className="h-12 w-12 mx-auto text-primary animate-spin" />
-              <p className="text-gray-600">
-                Uploading {selectedFile?.name}...
-              </p>
-              <Progress value={uploadProgress} className="w-full h-2 mt-4" />
-              <p className="text-sm text-gray-500">
-                {Math.round(uploadProgress)}% complete
-              </p>
-            </div>
-          ) : selectedFile ? (
-            /* File selected */
-            <div className="space-y-3">
-              <FileType2 className="h-12 w-12 mx-auto text-primary" />
-              <p className="text-gray-700 font-medium">{selectedFile.name}</p>
-              <p className="text-sm text-gray-500">
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-              
-              <Button 
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCancelSelection();
-                }}
-              >
-                <FileX className="h-4 w-4 mr-2" />
-                Remove
-              </Button>
-            </div>
-          ) : (
-            /* No file selected */
-            <div className="space-y-3">
-              <Upload className="h-12 w-12 mx-auto text-primary" />
-              <p className="text-gray-700 font-medium">
-                Drag and drop your file or click to browse
-              </p>
-              <p className="text-sm text-gray-500">
-                Supports CSV and Excel files (xlsx, xls)
+          {isUploading && (
+            <div className="space-y-2">
+              <Progress value={uploadProgress} className="h-2" />
+              <p className="text-xs text-center text-gray-500">
+                Uploading... {uploadProgress}%
               </p>
             </div>
           )}
-        </div>
-        
-        {/* Error message */}
-        {errorMessage && (
-          <div className="text-center text-red-500 text-sm">{errorMessage}</div>
-        )}
-        
-        {/* Upload button */}
-        {selectedFile && !isUploading && (
-          <Button 
-            type="submit" 
-            className="w-full bg-primary text-white"
-            disabled={isUploading || !selectedFile}
-          >
-            {uploadProgress === 100 ? (
-              <>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Upload Complete
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload File
-              </>
-            )}
-          </Button>
-        )}
-      </form>
-    </div>
+          
+          <div className="flex justify-center">
+            <Button
+              type="submit"
+              className="bg-primary hover:bg-primary-dark text-white"
+              disabled={!file || isUploading}
+            >
+              {isUploading ? "Uploading..." : "Upload File"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
 
