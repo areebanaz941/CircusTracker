@@ -1,206 +1,267 @@
-import { 
-  users, 
-  circusShows,
-  type User, 
-  type InsertUser, 
-  type CircusShow, 
-  type InsertCircusShow,
-  type FileUpload,
-  type CircusShowWithCoords,
-  type CircusVenue
-} from "@shared/schema";
+import { CircusShowWithCoords, CircusVenue } from '@shared/schema';
+import { User, CircusShow, FileUpload, connectDB } from './db';
+
+// Connect to MongoDB
+connectDB();
 
 // Storage interface definition
 export interface IStorage {
   // User methods
-  getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getUser(id: string): Promise<any | undefined>;
+  getUserByUsername(username: string): Promise<any | undefined>;
+  createUser(user: any): Promise<any>;
   
   // Show methods
   getAllShows(): Promise<CircusShowWithCoords[]>;
   getShowsByDate(date: string): Promise<CircusShowWithCoords[]>;
-  createShow(show: InsertCircusShow & { fileName: string }): Promise<CircusShow>;
+  createShow(show: any & { fileName: string }): Promise<any>;
   getShowDateRange(): Promise<{ startDate: string; endDate: string }>;
   getVenues(): Promise<CircusVenue[]>;
   
   // File upload methods
-  getFileUploads(): Promise<FileUpload[]>;
-  createFileUpload(upload: FileUpload): Promise<FileUpload>;
+  getFileUploads(): Promise<any[]>;
+  createFileUpload(upload: any): Promise<any>;
   deleteFileAndShows(fileName: string): Promise<void>;
 }
 
-// In-memory storage implementation
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private shows: Map<number, CircusShow>;
-  private fileUploads: FileUpload[];
-  private currentUserId: number;
-  private currentShowId: number;
-
-  constructor() {
-    this.users = new Map();
-    this.shows = new Map();
-    this.fileUploads = [];
-    this.currentUserId = 1;
-    this.currentShowId = 1;
-    
-    // Add default admin user
-    this.createUser({
-      username: "admin",
-      password: "admin123",
-    });
-  }
-
+// MongoDB storage implementation
+export class MongoDBStorage implements IStorage {
   // User methods
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+  async getUser(id: string): Promise<any | undefined> {
+    try {
+      const user = await User.findById(id);
+      return user ? user.toObject() : undefined;
+    } catch (error) {
+      console.error('Error getting user:', error);
+      return undefined;
+    }
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getUserByUsername(username: string): Promise<any | undefined> {
+    try {
+      const user = await User.findOne({ username });
+      return user ? user.toObject() : undefined;
+    } catch (error) {
+      console.error('Error getting user by username:', error);
+      return undefined;
+    }
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async createUser(user: any): Promise<any> {
+    try {
+      const newUser = new User(user);
+      const savedUser = await newUser.save();
+      return savedUser.toObject();
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
   }
   
   // Show methods
   async getAllShows(): Promise<CircusShowWithCoords[]> {
-    return Array.from(this.shows.values()).map(show => ({
-      ...show,
-      coords: [parseFloat(show.latitude), parseFloat(show.longitude)]
-    }));
+    try {
+      const shows = await CircusShow.find().sort({ showDate: 1 });
+      
+      return shows.map(show => {
+        const showObj = show.toObject();
+        return {
+          ...showObj,
+          id: showObj._id.toString(),
+          coords: [parseFloat(showObj.latitude), parseFloat(showObj.longitude)]
+        };
+      });
+    } catch (error) {
+      console.error('Error getting all shows:', error);
+      return [];
+    }
   }
   
   async getShowsByDate(dateStr: string): Promise<CircusShowWithCoords[]> {
-    const targetDate = new Date(dateStr);
-    targetDate.setHours(0, 0, 0, 0);
-    
-    return Array.from(this.shows.values())
-      .filter(show => {
-        const showDate = new Date(show.showDate);
-        showDate.setHours(0, 0, 0, 0);
-        return showDate.getTime() === targetDate.getTime();
-      })
-      .map(show => ({
-        ...show,
-        coords: [parseFloat(show.latitude), parseFloat(show.longitude)]
-      }));
+    try {
+      const targetDate = new Date(dateStr);
+      // Set time to beginning of day
+      targetDate.setHours(0, 0, 0, 0);
+      
+      // Set end of day
+      const endDate = new Date(dateStr);
+      endDate.setHours(23, 59, 59, 999);
+      
+      const shows = await CircusShow.find({
+        showDate: {
+          $gte: targetDate,
+          $lte: endDate
+        }
+      }).sort({ showDate: 1 });
+      
+      return shows.map(show => {
+        const showObj = show.toObject();
+        return {
+          ...showObj,
+          id: showObj._id.toString(),
+          coords: [parseFloat(showObj.latitude), parseFloat(showObj.longitude)]
+        };
+      });
+    } catch (error) {
+      console.error('Error getting shows by date:', error);
+      return [];
+    }
   }
   
-  async createShow(show: InsertCircusShow & { fileName: string }): Promise<CircusShow> {
-    const id = this.currentShowId++;
-    const newShow: CircusShow = {
-      id,
-      ...show,
-      uploadedAt: new Date(),
-    };
-    
-    this.shows.set(id, newShow);
-    return newShow;
+  async createShow(show: any): Promise<any> {
+    try {
+      const newShow = new CircusShow({
+        ...show,
+        uploadedAt: new Date()
+      });
+      
+      const savedShow = await newShow.save();
+      return savedShow.toObject();
+    } catch (error) {
+      console.error('Error creating show:', error);
+      throw error;
+    }
   }
   
   async getShowDateRange(): Promise<{ startDate: string; endDate: string }> {
-    const shows = Array.from(this.shows.values());
-    
-    if (shows.length === 0) {
-      // Default date range if no shows
+    try {
+      const showCount = await CircusShow.countDocuments();
+      
+      if (showCount === 0) {
+        // Default date range if no shows
+        return {
+          startDate: new Date("2025-04-01").toISOString(),
+          endDate: new Date("2025-10-31").toISOString(),
+        };
+      }
+      
+      const earliestShow = await CircusShow.findOne().sort({ showDate: 1 });
+      const latestShow = await CircusShow.findOne().sort({ showDate: -1 });
+      
+      return {
+        startDate: earliestShow.showDate.toISOString(),
+        endDate: latestShow.showDate.toISOString(),
+      };
+    } catch (error) {
+      console.error('Error getting show date range:', error);
       return {
         startDate: new Date("2025-04-01").toISOString(),
         endDate: new Date("2025-10-31").toISOString(),
       };
     }
-    
-    const dates = shows.map(show => new Date(show.showDate));
-    const startDate = new Date(Math.min(...dates.map(d => d.getTime())));
-    const endDate = new Date(Math.max(...dates.map(d => d.getTime())));
-    
-    return {
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    };
   }
   
   async getVenues(): Promise<CircusVenue[]> {
-    const shows = Array.from(this.shows.values());
-    
-    // Group shows by venue
-    const venueMap = new Map<string, {
-      shows: CircusShow[];
-      venueName: string;
-      city: string;
-      state: string;
-      address: string;
-      coords: [number, number];
-    }>();
-    
-    shows.forEach(show => {
-      const key = `${show.venueName}-${show.city}-${show.state}`;
-      if (!venueMap.has(key)) {
-        venueMap.set(key, {
-          shows: [],
-          venueName: show.venueName,
-          city: show.city,
-          state: show.state,
-          address: show.address,
-          coords: [parseFloat(show.latitude), parseFloat(show.longitude)],
-        });
-      }
+    try {
+      const shows = await CircusShow.find();
       
-      venueMap.get(key)!.shows.push(show);
-    });
-    
-    // Convert to venues array with date ranges
-    return Array.from(venueMap.values()).map((venue, index) => {
-      const dates = venue.shows.map(show => new Date(show.showDate));
-      const startDate = new Date(Math.min(...dates.map(d => d.getTime())));
-      const endDate = new Date(Math.max(...dates.map(d => d.getTime())));
+      // Group shows by venue
+      const venueMap = new Map<string, {
+        shows: any[];
+        venueName: string;
+        city: string;
+        state: string;
+        address: string;
+        coords: [number, number];
+      }>();
       
-      return {
-        id: index + 1,
-        venueName: venue.venueName,
-        city: venue.city,
-        state: venue.state,
-        address: venue.address,
-        startDate,
-        endDate,
-        coords: venue.coords,
-      };
-    });
+      shows.forEach(show => {
+        const showObj = show.toObject();
+        const key = `${showObj.venueName}-${showObj.city}-${showObj.state}`;
+        
+        if (!venueMap.has(key)) {
+          venueMap.set(key, {
+            shows: [],
+            venueName: showObj.venueName,
+            city: showObj.city,
+            state: showObj.state,
+            address: showObj.address,
+            coords: [parseFloat(showObj.latitude), parseFloat(showObj.longitude)],
+          });
+        }
+        
+        venueMap.get(key)!.shows.push(showObj);
+      });
+      
+      // Convert to venues array with date ranges
+      return Array.from(venueMap.values()).map((venue, index) => {
+        const dates = venue.shows.map(show => new Date(show.showDate));
+        const startDate = new Date(Math.min(...dates.map(d => d.getTime())));
+        const endDate = new Date(Math.max(...dates.map(d => d.getTime())));
+        
+        return {
+          id: index + 1,
+          venueName: venue.venueName,
+          city: venue.city,
+          state: venue.state,
+          address: venue.address,
+          startDate,
+          endDate,
+          coords: venue.coords,
+        };
+      });
+    } catch (error) {
+      console.error('Error getting venues:', error);
+      return [];
+    }
   }
   
   // File upload methods
-  async getFileUploads(): Promise<FileUpload[]> {
-    return [...this.fileUploads];
+  async getFileUploads(): Promise<any[]> {
+    try {
+      const uploads = await FileUpload.find().sort({ uploadDate: -1 });
+      return uploads.map(upload => upload.toObject());
+    } catch (error) {
+      console.error('Error getting file uploads:', error);
+      return [];
+    }
   }
   
-  async createFileUpload(upload: FileUpload): Promise<FileUpload> {
-    this.fileUploads.push(upload);
-    return upload;
+  async createFileUpload(upload: any): Promise<any> {
+    try {
+      const newUpload = new FileUpload(upload);
+      const savedUpload = await newUpload.save();
+      return savedUpload.toObject();
+    } catch (error) {
+      console.error('Error creating file upload:', error);
+      throw error;
+    }
   }
   
   async deleteFileAndShows(fileName: string): Promise<void> {
-    // Remove file from uploads
-    this.fileUploads = this.fileUploads.filter(upload => upload.fileName !== fileName);
-    
-    // Remove associated shows
-    const showIds: number[] = [];
-    this.shows.forEach((show, id) => {
-      if (show.fileName === fileName) {
-        showIds.push(id);
-      }
-    });
-    
-    showIds.forEach(id => {
-      this.shows.delete(id);
-    });
+    try {
+      // Delete shows associated with the file
+      await CircusShow.deleteMany({ fileName });
+      
+      // Delete the file upload record
+      await FileUpload.deleteMany({ fileName });
+    } catch (error) {
+      console.error('Error deleting file and shows:', error);
+      throw error;
+    }
   }
 }
 
-export const storage = new MemStorage();
+// Initialize default admin user if needed
+async function initializeDefaultUser() {
+  try {
+    const adminUser = await User.findOne({ username: 'admin' });
+    
+    if (!adminUser) {
+      const newUser = new User({
+        username: 'admin',
+        password: 'admin123'
+      });
+      
+      await newUser.save();
+      console.log('Default admin user created');
+    }
+  } catch (error) {
+    console.error('Error creating default user:', error);
+  }
+}
+
+// Initialize default user
+initializeDefaultUser();
+
+export const storage = new MongoDBStorage();
