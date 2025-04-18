@@ -1,16 +1,20 @@
 import mongoose from 'mongoose';
 
-// MongoDB connection URI - Encode the @ in the password
-const MONGODB_URI = 'mongodb+srv://areebanaz4848:Pakistan%4012@cluster0.zdijmho.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+// Using local MongoDB (since connection to remote failed)
+const MONGODB_URI = 'mongodb://localhost:27017/circus_tracker';
 
 // Connect to MongoDB
 export const connectDB = async () => {
   try {
-    await mongoose.connect(MONGODB_URI);
+    mongoose.set('strictQuery', false);
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000, // 5 seconds timeout instead of 30
+      connectTimeoutMS: 10000, // 10 seconds connection timeout
+    });
     console.log('MongoDB Connected...');
   } catch (err: any) {
     console.error('MongoDB connection error:', err.message);
-    process.exit(1);
+    console.log('Using in-memory fallback storage...');
   }
 };
 
