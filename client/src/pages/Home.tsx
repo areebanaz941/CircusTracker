@@ -31,7 +31,9 @@ const Home: React.FC = () => {
       />
       
       {/* Mobile Bottom Navigation - Fixed to bottom on mobile only */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t z-30">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t z-30" 
+           style={{ bottom: '100px' }} // Position above the time slider
+      >
         <div className="flex justify-around">
           <button className="flex flex-col items-center py-2 px-4 text-primary">
             <i className="fas fa-map-marker-alt mb-1"></i>

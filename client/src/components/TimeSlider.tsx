@@ -73,7 +73,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white p-4 shadow-lg z-20 border-t border-gray-200">
+    <div className="fixed bottom-0 left-0 right-lg lg:right-0 bg-white p-4 shadow-lg z-20 border-t border-gray-200 lg:left-64">
       <div className="container mx-auto">
         <div className="flex flex-col md:flex-row md:items-center space-y-3 md:space-y-0 md:space-x-4">
           <div className="flex-shrink-0">

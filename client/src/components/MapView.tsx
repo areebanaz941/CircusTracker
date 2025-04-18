@@ -18,6 +18,8 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const markersByDate = useRef<Record<string, any[]>>({});
+  const [previousDateString, setPreviousDateString] = useState<string>("");
   
   // Fetch all circus shows
   const { data: shows, isLoading } = useQuery<CircusShowWithCoords[]>({
@@ -43,7 +45,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
       if (mapRef.current && !leafletMap.current) {
         // Initialize the map
         const L = window.L;
-        leafletMap.current = L.map(mapRef.current).setView([49.2827, -123.1207], 6);
+        leafletMap.current = L.map(mapRef.current).setView([39.8283, -98.5795], 4); // Center on US
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -62,7 +64,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
     };
   }, []);
 
-  // Update markers when shows or current date changes
+  // Initial setup of all markers
   useEffect(() => {
     if (!leafletMap.current || !shows || !window.L) return;
     
@@ -74,45 +76,57 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
       marker.remove();
     });
     markersRef.current = [];
+    markersByDate.current = {};
     
     // Create custom circus icon
     const circusIcon = createCircusIcon(L);
+    const activeIcon = createCircusIcon(L, true); // Pass true for active icon
     
-    // Find shows for current date
-    const currentDateString = currentDate.toISOString().split('T')[0];
-    
-    // Add markers for ALL shows, but style differently based on date
+    // Group markers by date for easy updating
     shows.forEach(show => {
       const { latitude, longitude, circusName, venueName, address, city, state, zip, showDate } = show;
-      const showDateString = new Date(show.showDate).toISOString().split('T')[0];
-      const isActive = showDateString === currentDateString;
+      const showDateObj = new Date(show.showDate);
+      const showDateString = showDateObj.toISOString().split('T')[0];
       
+      // Create both icon versions for each marker (active and inactive)
       const latLng: [number, number] = [parseFloat(latitude), parseFloat(longitude)];
       
-      // Create the marker with different opacity based on if it's active for current date
+      // Initially set all markers as inactive
       const marker = L.marker(latLng, { 
         icon: circusIcon,
-        opacity: isActive ? 1.0 : 0.6
+        opacity: 0.6
       }).addTo(map);
       
-      // Different popup content based on active status
+      // Different popup content
       const popupContent = `
         <div class="circus-popup">
-          <div class="font-bold ${isActive ? 'text-primary' : 'text-gray-500'}">${circusName}</div>
+          <div class="font-bold text-gray-500">${circusName}</div>
           <div class="font-medium">${venueName}</div>
           <div>${address}</div>
           <div>${city}, ${state} ${zip}</div>
           <div class="text-sm mt-2">
-            <span class="font-medium">${isActive ? 'Show date' : 'Show date'}:</span> ${formatDate(new Date(showDate))}
+            <span class="font-medium">Show date:</span> ${formatDate(showDateObj)}
           </div>
-          ${isActive ? 
-            '<div class="text-xs mt-1 text-primary font-semibold">Active today!</div>' : 
-            ''
-          }
+          <div class="mt-2">
+            <button class="show-details-btn bg-primary text-white px-3 py-1 rounded text-xs">Show Details</button>
+          </div>
         </div>
       `;
       
       marker.bindPopup(popupContent);
+      
+      // Store the marker by date for easy access later
+      if (!markersByDate.current[showDateString]) {
+        markersByDate.current[showDateString] = [];
+      }
+      
+      // Store marker details for later updates
+      markersByDate.current[showDateString].push({
+        marker,
+        data: show,
+        isActive: false,
+      });
+      
       markersRef.current.push(marker);
     });
     
@@ -121,7 +135,71 @@ const MapView: React.FC<MapViewProps> = ({ currentDate }) => {
       const group = L.featureGroup(markersRef.current);
       map.fitBounds(group.getBounds(), { padding: [50, 50] });
     }
-  }, [shows, currentDate]);
+  }, [shows]);
+
+  // Update markers highlighting when current date changes
+  useEffect(() => {
+    if (!leafletMap.current || !shows || !window.L || Object.keys(markersByDate.current).length === 0) return;
+    
+    const L = window.L;
+    const map = leafletMap.current;
+    const currentDateString = currentDate.toISOString().split('T')[0];
+    
+    // If date hasn't changed, do nothing
+    if (currentDateString === previousDateString) return;
+    
+    // Create custom icons
+    const circusIcon = createCircusIcon(L);
+    const activeIcon = createCircusIcon(L, true); // Pass true for active icon
+    
+    // Reset previous active markers
+    if (previousDateString && markersByDate.current[previousDateString]) {
+      markersByDate.current[previousDateString].forEach(({ marker, data }) => {
+        marker.setIcon(circusIcon);
+        marker.setOpacity(0.6);
+      });
+    }
+    
+    // Highlight new active markers
+    if (markersByDate.current[currentDateString]) {
+      const activeMarkers = markersByDate.current[currentDateString];
+      
+      activeMarkers.forEach(({ marker, data }) => {
+        marker.setIcon(activeIcon);
+        marker.setOpacity(1.0);
+        
+        // Update popup content to show active status
+        const { circusName, venueName, address, city, state, zip, showDate } = data;
+        const showDateObj = new Date(showDate);
+        
+        const popupContent = `
+          <div class="circus-popup">
+            <div class="font-bold text-primary">${circusName}</div>
+            <div class="font-medium">${venueName}</div>
+            <div>${address}</div>
+            <div>${city}, ${state} ${zip}</div>
+            <div class="text-sm mt-2">
+              <span class="font-medium">Show date:</span> ${formatDate(showDateObj)}
+            </div>
+            <div class="text-xs mt-1 text-primary font-semibold">Active today!</div>
+            <div class="mt-2">
+              <button class="show-details-btn bg-primary text-white px-3 py-1 rounded text-xs">Show Details</button>
+            </div>
+          </div>
+        `;
+        
+        marker.bindPopup(popupContent);
+      });
+      
+      // If we have active markers, pan the map to show them
+      if (activeMarkers.length > 0) {
+        const group = L.featureGroup(activeMarkers.map(item => item.marker));
+        map.flyToBounds(group.getBounds(), { padding: [50, 50], duration: 0.5 });
+      }
+    }
+    
+    setPreviousDateString(currentDateString);
+  }, [shows, currentDate, previousDateString]);
 
   // Update map size when window resizes
   useEffect(() => {
