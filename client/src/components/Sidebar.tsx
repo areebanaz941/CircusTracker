@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDate } from "@/lib/dateUtils";
-import { CircusVenue } from "@shared/schema";
+import { CircusVenue, CircusShowWithCoords } from "@shared/schema";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -10,9 +10,17 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
+  const [activeTab, setActiveTab] = useState<'map' | 'list' | 'filter'>('map');
+  
   // Get current venues (grouped by location)
   const { data: venues } = useQuery<CircusVenue[]>({
     queryKey: ["/api/shows/venues"],
+    enabled: currentView === "user",
+  });
+
+  // Get all shows
+  const { data: allShows } = useQuery<CircusShowWithCoords[]>({
+    queryKey: ["/api/shows"],
     enabled: currentView === "user",
   });
 
@@ -39,41 +47,105 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
         {/* User View Navigation */}
         {currentView === "user" && (
           <div className="py-4 flex-1">
-            <div className="px-4 mb-6">
+            <div className="px-4 mb-4">
               <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider">View Controls</h2>
               <nav className="mt-2 space-y-1">
-                <a href="#" className="flex items-center px-4 py-2 text-white bg-primary-dark rounded-md group">
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2 rounded-md group ${activeTab === 'map' ? 'text-white bg-primary-dark' : 'text-gray-300 hover:text-white hover:bg-navy-light'}`}
+                  onClick={() => setActiveTab('map')}
+                >
                   <i className="fas fa-map-marker-alt mr-3"></i>
                   <span>Map View</span>
                 </a>
-                <a href="#" className="flex items-center px-4 py-2 text-gray-300 hover:text-white hover:bg-navy-light rounded-md group">
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2 rounded-md group ${activeTab === 'list' ? 'text-white bg-primary-dark' : 'text-gray-300 hover:text-white hover:bg-navy-light'}`}
+                  onClick={() => setActiveTab('list')}
+                >
                   <i className="fas fa-list mr-3"></i>
                   <span>Show List</span>
                 </a>
-                <a href="#" className="flex items-center px-4 py-2 text-gray-300 hover:text-white hover:bg-navy-light rounded-md group">
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2 rounded-md group ${activeTab === 'filter' ? 'text-white bg-primary-dark' : 'text-gray-300 hover:text-white hover:bg-navy-light'}`}
+                  onClick={() => setActiveTab('filter')}
+                >
                   <i className="fas fa-filter mr-3"></i>
                   <span>Filter Shows</span>
                 </a>
               </nav>
             </div>
             
-            <div className="px-4">
-              <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider">Current Shows</h2>
-              <div className="mt-2 space-y-2">
-                {venues?.map(venue => (
-                  <div key={venue.id} className="p-3 bg-navy-light rounded-md">
-                    <div className="font-medium text-white">{venue.city}, {venue.state}</div>
-                    <div className="text-sm text-gray-300">{venue.venueName}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {formatDate(new Date(venue.startDate))} - {formatDate(new Date(venue.endDate))}
+            {/* Map View Content - Venue Locations */}
+            {activeTab === 'map' && (
+              <div className="px-4">
+                <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider">Current Venues</h2>
+                <div className="mt-2 space-y-2">
+                  {venues?.map(venue => (
+                    <div key={venue.id} className="p-3 bg-navy-light rounded-md">
+                      <div className="font-medium text-white">{venue.city}, {venue.state}</div>
+                      <div className="text-sm text-gray-300">{venue.venueName}</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {formatDate(new Date(venue.startDate))} - {formatDate(new Date(venue.endDate))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {!venues?.length && (
-                  <div className="text-gray-400 text-sm p-2">No current shows found</div>
-                )}
+                  ))}
+                  {!venues?.length && (
+                    <div className="text-gray-400 text-sm p-2">No current venues found</div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+            
+            {/* Show List Content - All Shows */}
+            {activeTab === 'list' && (
+              <div className="px-4">
+                <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider">All Shows</h2>
+                <div className="mt-2 space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto">
+                  {allShows?.map(show => (
+                    <div key={show.id} className="p-3 bg-navy-light rounded-md">
+                      <div className="font-medium text-white">{show.circusName}</div>
+                      <div className="text-sm text-gray-300">{show.venueName}</div>
+                      <div className="text-sm text-gray-300">{show.city}, {show.state}</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {formatDate(new Date(show.showDate))}
+                      </div>
+                    </div>
+                  ))}
+                  {!allShows?.length && (
+                    <div className="text-gray-400 text-sm p-2">No shows found</div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Filter Content */}
+            {activeTab === 'filter' && (
+              <div className="px-4">
+                <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider">Filter Options</h2>
+                <div className="mt-2 space-y-4 text-gray-300">
+                  <div>
+                    <label className="text-sm mb-1 block">Circus Name</label>
+                    <input type="text" className="w-full px-3 py-2 bg-navy-light rounded border border-gray-700 text-white text-sm" placeholder="Enter circus name" />
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm mb-1 block">City</label>
+                    <input type="text" className="w-full px-3 py-2 bg-navy-light rounded border border-gray-700 text-white text-sm" placeholder="Enter city" />
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm mb-1 block">State</label>
+                    <input type="text" className="w-full px-3 py-2 bg-navy-light rounded border border-gray-700 text-white text-sm" placeholder="Enter state" />
+                  </div>
+                  
+                  <button className="w-full py-2 text-sm bg-primary text-white rounded hover:bg-primary-dark transition-colors">
+                    Apply Filters
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         
