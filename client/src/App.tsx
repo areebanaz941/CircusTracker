@@ -1,17 +1,48 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { useState, useEffect } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Home from "@/pages/Home";
-import AdminView from "@/pages/AdminView";
 import NotFound from "@/pages/not-found";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
-import AuthModal from "@/components/AuthModal";
+import { Toaster } from "@/components/ui/toaster";
+import AuthPage from "@/pages/auth-page";
+import AdminDashboard from "@/pages/admin-dashboard";
+import { queryClient } from "@/lib/queryClient";
+
+// Protected route component
+const ProtectedRoute = ({ 
+  component: Component,
+  isAuthenticated
+}: { 
+  component: React.ComponentType; 
+  isAuthenticated: boolean;
+}) => {
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/auth");
+    }
+  }, [isAuthenticated, navigate]);
+
+  return isAuthenticated ? <Component /> : null;
+};
 
 function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentView, setCurrentView] = useState<"user" | "admin">("user");
+  const [, navigate] = useLocation();
+
+  // Check if user is already authenticated
+  useEffect(() => {
+    // Check local storage for auth state (in a real app, use proper auth tokens)
+    const authState = localStorage.getItem("isAuthenticated");
+    if (authState === "true") {
+      setIsAdmin(true);
+    }
+  }, []);
 
   // Close sidebar on mobile when changing view
   useEffect(() => {
@@ -24,68 +55,94 @@ function App() {
     setSidebarOpen(!sidebarOpen);
   };
 
-  const handleLogin = (password: string) => {
-    // Simple client-side authentication for demo
-    if (password === "admin123") {
-      setIsAdmin(true);
-      setCurrentView("admin");
-      setShowAuthModal(false);
-      return true;
-    }
-    return false;
-  };
-
-  const showAdminLogin = () => {
-    setShowAuthModal(true);
-  };
-
-  const closeAuthModal = () => {
-    setShowAuthModal(false);
-  };
-
   const switchToUserView = () => {
     setCurrentView("user");
+    navigate("/");
   };
 
   const switchToAdminView = () => {
     if (isAdmin) {
       setCurrentView("admin");
+      navigate("/admin");
     } else {
-      showAdminLogin();
+      navigate("/auth");
     }
   };
 
+  // Simulate successful login (this will be replaced by actual API authentication)
+  const handleLoginSuccess = () => {
+    setIsAdmin(true);
+    localStorage.setItem("isAuthenticated", "true");
+  };
+
+  // Simulate logout
+  const handleLogout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem("isAuthenticated");
+    setCurrentView("user");
+    navigate("/");
+  };
+
+  // Set up authentication event listeners
+  useEffect(() => {
+    // Listen for authentication events from API responses
+    const handleAuthSuccess = () => handleLoginSuccess();
+    const handleAuthFailure = () => handleLogout();
+    
+    window.addEventListener("auth:success", handleAuthSuccess);
+    window.addEventListener("auth:failure", handleAuthFailure);
+    
+    return () => {
+      window.removeEventListener("auth:success", handleAuthSuccess);
+      window.removeEventListener("auth:failure", handleAuthFailure);
+    };
+  }, []);
+
   return (
-    <div className="h-screen overflow-hidden">
-      <Header 
-        isAdmin={isAdmin}
-        toggleSidebar={toggleSidebar}
-        currentView={currentView}
-        switchToUserView={switchToUserView}
-        switchToAdminView={switchToAdminView}
-      />
-      
-      <Sidebar 
-        isOpen={sidebarOpen}
-        isAdmin={isAdmin}
-        currentView={currentView}
-      />
-      
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={closeAuthModal}
-        onLogin={handleLogin}
-      />
-      
-      <main className={`pt-16 transition-all duration-300 ease-in-out ${sidebarOpen ? "lg:pl-64" : ""}`}>
+    <QueryClientProvider client={queryClient}>
+      <div className="h-screen overflow-hidden">
         <Switch>
-          <Route path="/" component={() => (
-            currentView === "user" ? <Home /> : <AdminView />
-          )}/>
-          <Route component={NotFound} />
+          <Route path="/auth">
+            <AuthPage />
+          </Route>
+          
+          <Route path="/admin">
+            <ProtectedRoute 
+              component={AdminDashboard} 
+              isAuthenticated={isAdmin} 
+            />
+          </Route>
+          
+          <Route path="/">
+            <>
+              <Header 
+                isAdmin={isAdmin}
+                toggleSidebar={toggleSidebar}
+                currentView="user"
+                switchToUserView={switchToUserView}
+                switchToAdminView={switchToAdminView}
+              />
+              
+              <Sidebar 
+                isOpen={sidebarOpen}
+                isAdmin={isAdmin}
+                currentView="user"
+              />
+              
+              <main className={`pt-16 transition-all duration-300 ease-in-out ${sidebarOpen ? "lg:pl-64" : ""}`}>
+                <Home />
+              </main>
+            </>
+          </Route>
+          
+          <Route>
+            <NotFound />
+          </Route>
         </Switch>
-      </main>
-    </div>
+        
+        <Toaster />
+      </div>
+    </QueryClientProvider>
   );
 }
 

@@ -1,4 +1,6 @@
 import React from "react";
+import { useLocation } from "wouter";
+import { Menu } from "lucide-react";
 
 interface HeaderProps {
   isAdmin: boolean;
@@ -15,6 +17,7 @@ const Header: React.FC<HeaderProps> = ({
   switchToUserView,
   switchToAdminView
 }) => {
+  const [, navigate] = useLocation();
   const [currentDate, setCurrentDate] = React.useState<string>(
     new Date().toLocaleDateString("en-US", {
       month: "long",
@@ -22,6 +25,14 @@ const Header: React.FC<HeaderProps> = ({
       year: "numeric"
     })
   );
+
+  const handleAdminClick = () => {
+    if (isAdmin) {
+      navigate("/admin");
+    } else {
+      navigate("/auth");
+    }
+  };
 
   return (
     <header className="bg-white shadow-sm fixed top-0 left-0 right-0 z-10 lg:pl-64">
@@ -31,13 +42,13 @@ const Header: React.FC<HeaderProps> = ({
             className="text-gray-500 hover:text-gray-700 lg:hidden mr-2"
             onClick={toggleSidebar}
           >
-            <i className="fas fa-bars text-xl"></i>
+            <Menu className="h-6 w-6" />
           </button>
           <div className="flex items-center">
             <div className="h-8 w-8 mr-2 rounded-md bg-primary flex items-center justify-center text-white">
               <span className="font-bold">SC</span>
             </div>
-            <h1 className="text-xl font-semibold text-navy font-montserrat hidden sm:block">Europa SC Tracker</h1>
+            <h1 className="text-xl font-semibold text-navy hidden sm:block">Europa SC Tracker</h1>
           </div>
         </div>
         <div className="flex items-center space-x-3">
@@ -51,9 +62,9 @@ const Header: React.FC<HeaderProps> = ({
             </button>
             <button 
               className={`px-3 py-1 text-sm ${currentView === "admin" ? "bg-primary text-white" : "bg-white text-gray-700"}`}
-              onClick={switchToAdminView}
+              onClick={handleAdminClick}
             >
-              Admin
+              Admin {isAdmin && "✓"}
             </button>
           </div>
         </div>

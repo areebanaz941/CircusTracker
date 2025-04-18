@@ -4,7 +4,9 @@ import { storage } from "./storage";
 import multer from "multer";
 import { processFile } from "./services/fileParser";
 import { z } from "zod";
-import { fileUploadSchema, insertCircusShowSchema } from "@shared/schema";
+import { fileUploadSchema, insertCircusShowSchema, insertUserSchema } from "@shared/schema";
+import { User } from "./db";
+import crypto from "crypto";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -33,30 +35,143 @@ const upload = multer({
   },
 });
 
-// Simple admin auth middleware
-const adminAuth = (req: Request, res: Response, next: Function) => {
-  const adminPassword = req.headers["x-admin-password"];
+// Helper function to hash password
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+// Helper function to verify password
+function verifyPassword(storedPassword: string, suppliedPassword: string): boolean {
+  const [salt, storedHash] = storedPassword.split(':');
+  const hash = crypto.pbkdf2Sync(suppliedPassword, salt, 1000, 64, 'sha512').toString('hex');
+  return storedHash === hash;
+}
+
+// Authentication middleware
+const requireAuth = async (req: Request, res: Response, next: Function) => {
+  // Get token from header (in a real app, use proper JWT)
+  const token = req.headers.authorization?.split(' ')[1];
   
-  if (adminPassword === "admin123") {
+  if (!token) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  
+  try {
+    // In a real app, verify JWT token
+    // For this example, we just check if token is 'admin-token'
+    if (token !== 'admin-token') {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+    
     next();
-  } else {
-    res.status(401).json({ message: "Unauthorized" });
+  } catch (error) {
+    return res.status(401).json({ message: "Authentication failed" });
   }
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Authentication endpoint (simplified for demo)
-  app.post("/api/auth/admin", (req, res) => {
-    const { password } = req.body;
+  // Initialize admin user
+  try {
+    const adminExists = await User.findOne({ username: 'admin1@gmail.com' });
     
-    if (password === "admin123") {
-      res.json({ success: true });
-    } else {
-      res.status(401).json({ 
+    if (!adminExists) {
+      // Create admin user with the requested credentials
+      const adminUser = new User({
+        username: 'admin1@gmail.com',
+        password: hashPassword('CircusMapping@12')
+      });
+      
+      await adminUser.save();
+      console.log('Admin user created');
+    }
+  } catch (error) {
+    console.error('Error creating admin user:', error);
+  }
+  
+  // Login endpoint
+  app.post("/api/login", async (req, res) => {
+    const { username, password } = req.body;
+    
+    try {
+      const user = await User.findOne({ username });
+      
+      if (!user) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Invalid credentials" 
+        });
+      }
+      
+      // Verify password
+      const passwordMatch = verifyPassword(user.password, password);
+      
+      if (!passwordMatch) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Invalid credentials" 
+        });
+      }
+      
+      // In a real app, generate JWT token here
+      res.json({ 
+        success: true,
+        token: 'admin-token',
+        user: {
+          id: user._id,
+          username: user.username
+        }
+      });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ 
         success: false, 
-        message: "Invalid password" 
+        message: "Internal server error" 
       });
     }
+  });
+  
+  // Register endpoint
+  app.post("/api/register", async (req, res) => {
+    const { username, password } = req.body;
+    
+    try {
+      // Check if user already exists
+      const existingUser = await User.findOne({ username });
+      
+      if (existingUser) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Username already exists" 
+        });
+      }
+      
+      // Create new user
+      const hashedPassword = hashPassword(password);
+      const newUser = new User({
+        username,
+        password: hashedPassword
+      });
+      
+      await newUser.save();
+      
+      res.status(201).json({ 
+        success: true,
+        message: "User created successfully"
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error" 
+      });
+    }
+  });
+  
+  // Logout endpoint (would handle JWT token invalidation in a real app)
+  app.post("/api/logout", (req, res) => {
+    res.json({ success: true });
   });
   
   // Get all circus shows
@@ -95,6 +210,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const venues = await storage.getVenues();
       res.json(venues);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+  
+  // Add show manually (protected route)
+  app.post("/api/shows", async (req, res) => {
+    try {
+      const showData = {
+        ...req.body,
+        showDate: new Date(req.body.showDate)
+      };
+      
+      const newShow = await storage.createShow(showData);
+      res.status(201).json(newShow);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

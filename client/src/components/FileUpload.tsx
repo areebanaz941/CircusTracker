@@ -1,165 +1,223 @@
 import React, { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { Upload, FileType2, FileX, CheckCircle2, RotateCw } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 const FileUpload: React.FC = () => {
-  const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+  const { toast } = useToast();
+
   // File upload mutation
   const uploadMutation = useMutation({
     mutationFn: async (formData: FormData) => {
-      await apiRequest("POST", "/api/uploads", formData);
+      setIsUploading(true);
+      setUploadProgress(0);
+      
+      // Simulate progress for better UX
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prevProgress) => {
+          const newProgress = prevProgress + Math.random() * 15;
+          return newProgress > 90 ? 90 : newProgress;
+        });
+      }, 500);
+      
+      try {
+        const response = await apiRequest("POST", "/api/uploads", formData);
+        
+        // Clear interval before proceeding
+        clearInterval(progressInterval);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Upload failed");
+        }
+        
+        setUploadProgress(100);
+        return await response.json();
+      } catch (error) {
+        clearInterval(progressInterval);
+        throw error;
+      } finally {
+        setIsUploading(false);
+      }
     },
-    onSuccess: () => {
-      // Invalidate and refetch queries that depend on the shows data
+    onSuccess: (data) => {
+      setSelectedFile(null);
+      
+      toast({
+        title: "Upload Successful",
+        description: `${data.recordCount} records have been processed.`,
+      });
+      
+      // Invalidate cached data to refresh
       queryClient.invalidateQueries({ queryKey: ["/api/uploads"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shows"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shows/venues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shows/date-range"] });
       
-      setSelectedFile(null);
-      
-      toast({
-        title: "Upload Successful",
-        description: "Your file has been processed and the circus shows have been added.",
-      });
+      // Reset progress after animation completes
+      setTimeout(() => {
+        setUploadProgress(0);
+      }, 2000);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      setErrorMessage(error.message);
+      setUploadProgress(0);
+      
       toast({
         title: "Upload Failed",
         description: error.message,
         variant: "destructive",
       });
-    }
+    },
   });
-  
-  // Trigger file input click
-  const handleBrowseClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-  
+
   // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      setSelectedFile(files[0]);
-    }
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedFile(file);
+    setErrorMessage("");
   };
-  
-  // Handle file upload
-  const handleUpload = async () => {
-    if (!selectedFile) return;
+
+  // Handle form submission
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     
+    if (!selectedFile) {
+      setErrorMessage("Please select a file to upload");
+      return;
+    }
+    
+    // Check file type
+    const fileExtension = selectedFile.name.split('.').pop()?.toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(fileExtension || '')) {
+      setErrorMessage("Please select a CSV or Excel file");
+      return;
+    }
+    
+    // Create form data
     const formData = new FormData();
     formData.append("file", selectedFile);
     
+    // Execute upload
     uploadMutation.mutate(formData);
   };
-  
-  // Handle drag events
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-  
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-  
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      setSelectedFile(files[0]);
+
+  // Reset file selection
+  const handleCancelSelection = () => {
+    setSelectedFile(null);
+    setErrorMessage("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-      <h2 className="text-2xl font-semibold mb-4 font-montserrat text-navy">Upload Show Data</h2>
-      
-      <div className="mb-6">
-        <div
-          className={`border-2 border-dashed ${isDragging ? 'border-primary' : 'border-gray-300'} rounded-lg p-8 text-center`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+    <div className="w-full">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* File upload area */}
+        <div 
+          className={`border-2 border-dashed rounded-lg p-8 text-center ${
+            isUploading
+              ? "bg-gray-50 border-gray-300" 
+              : errorMessage 
+                ? "bg-red-50 border-red-300" 
+                : "bg-blue-50 border-blue-300 hover:bg-blue-100 cursor-pointer"
+          } transition-colors`}
+          onClick={() => !isUploading && fileInputRef.current?.click()}
         >
-          <div className="flex flex-col items-center">
-            <i className="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-3"></i>
-            <p className="text-lg text-gray-600 mb-2">
-              {selectedFile 
-                ? `Selected file: ${selectedFile.name}` 
-                : "Drag and drop your CSV/Excel file here"}
-            </p>
-            {!selectedFile && <p className="text-sm text-gray-500 mb-4">or</p>}
-            
-            {selectedFile ? (
-              <div className="flex space-x-3">
-                <Button 
-                  className="bg-primary text-white hover:bg-primary-dark"
-                  onClick={handleUpload}
-                  disabled={uploadMutation.isPending}
-                >
-                  {uploadMutation.isPending ? "Uploading..." : "Upload File"}
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => setSelectedFile(null)}
-                  disabled={uploadMutation.isPending}
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <Button
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={handleFileChange}
+            className="hidden"
+            disabled={isUploading}
+          />
+          
+          {/* Upload in progress */}
+          {isUploading ? (
+            <div className="space-y-4">
+              <RotateCw className="h-12 w-12 mx-auto text-primary animate-spin" />
+              <p className="text-gray-600">
+                Uploading {selectedFile?.name}...
+              </p>
+              <Progress value={uploadProgress} className="w-full h-2 mt-4" />
+              <p className="text-sm text-gray-500">
+                {Math.round(uploadProgress)}% complete
+              </p>
+            </div>
+          ) : selectedFile ? (
+            /* File selected */
+            <div className="space-y-3">
+              <FileType2 className="h-12 w-12 mx-auto text-primary" />
+              <p className="text-gray-700 font-medium">{selectedFile.name}</p>
+              <p className="text-sm text-gray-500">
+                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+              
+              <Button 
+                type="button"
                 variant="outline"
-                className="border-primary text-primary hover:bg-primary/10"
-                onClick={handleBrowseClick}
+                size="sm"
+                className="mt-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCancelSelection();
+                }}
               >
-                Browse Files
+                <FileX className="h-4 w-4 mr-2" />
+                Remove
               </Button>
-            )}
-            
-            <input 
-              ref={fileInputRef}
-              type="file" 
-              accept=".csv,.xlsx,.xls" 
-              className="hidden" 
-              onChange={handleFileChange}
-            />
-          </div>
+            </div>
+          ) : (
+            /* No file selected */
+            <div className="space-y-3">
+              <Upload className="h-12 w-12 mx-auto text-primary" />
+              <p className="text-gray-700 font-medium">
+                Drag and drop your file or click to browse
+              </p>
+              <p className="text-sm text-gray-500">
+                Supports CSV and Excel files (xlsx, xls)
+              </p>
+            </div>
+          )}
         </div>
-      </div>
-      
-      <div className="border-t border-gray-200 pt-4">
-        <h3 className="text-lg font-medium mb-3">File Requirements</h3>
-        <ul className="list-disc pl-5 text-gray-600 space-y-1">
-          <li>File format: CSV or Excel (.xlsx, .xls)</li>
-          <li>Required columns: Circus Name, Venue Name, Address, City, State, ZIP, Coordinates, Show Date</li>
-          <li>Coordinates should be in format: "latitude, longitude"</li>
-        </ul>
-      </div>
+        
+        {/* Error message */}
+        {errorMessage && (
+          <div className="text-center text-red-500 text-sm">{errorMessage}</div>
+        )}
+        
+        {/* Upload button */}
+        {selectedFile && !isUploading && (
+          <Button 
+            type="submit" 
+            className="w-full bg-primary text-white"
+            disabled={isUploading || !selectedFile}
+          >
+            {uploadProgress === 100 ? (
+              <>
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                Upload Complete
+              </>
+            ) : (
+              <>
+                <Upload className="mr-2 h-4 w-4" />
+                Upload File
+              </>
+            )}
+          </Button>
+        )}
+      </form>
     </div>
   );
 };
