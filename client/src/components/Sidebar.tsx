@@ -24,9 +24,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
 
   return (
     <aside 
-      className={`fixed inset-y-0 left-0 w-64 bg-navy transform ${
-        isOpen ? "translate-x-0" : "-translate-x-full"
-      } lg:translate-x-0 transition-transform duration-300 ease-in-out z-20`}
+      className={`fixed inset-y-0 left-0 w-64 bg-navy z-30 ${
+        isOpen ? "block" : "hidden"
+      } lg:block`}
     >
       <div className="h-full flex flex-col overflow-y-auto">
         <div className="flex items-center justify-center h-16 px-4 bg-navy-light">
