@@ -42,6 +42,18 @@ function App() {
     if (authState === "true") {
       setIsAdmin(true);
     }
+    
+    // Listen for authentication success event
+    const handleAuthSuccess = () => {
+      setIsAdmin(true);
+    };
+    
+    window.addEventListener("auth:success", handleAuthSuccess);
+    
+    // Clean up event listener
+    return () => {
+      window.removeEventListener("auth:success", handleAuthSuccess);
+    };
   }, []);
 
   // Close sidebar on mobile when changing view
@@ -83,20 +95,7 @@ function App() {
     navigate("/");
   };
 
-  // Set up authentication event listeners
-  useEffect(() => {
-    // Listen for authentication events from API responses
-    const handleAuthSuccess = () => handleLoginSuccess();
-    const handleAuthFailure = () => handleLogout();
-    
-    window.addEventListener("auth:success", handleAuthSuccess);
-    window.addEventListener("auth:failure", handleAuthFailure);
-    
-    return () => {
-      window.removeEventListener("auth:success", handleAuthSuccess);
-      window.removeEventListener("auth:failure", handleAuthFailure);
-    };
-  }, []);
+
 
   return (
     <QueryClientProvider client={queryClient}>

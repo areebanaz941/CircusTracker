@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,6 +31,13 @@ const AuthPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
+  // Check if already logged in
+  useEffect(() => {
+    if (localStorage.getItem("isAuthenticated") === "true") {
+      navigate("/admin");
+    }
+  }, [navigate]);
+
   // Initialize login form
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -50,13 +57,24 @@ const AuthPage: React.FC = () => {
       }
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Set authentication state in localStorage
+      localStorage.setItem("isAuthenticated", "true");
+      
+      // Display success message
       toast({
         title: "Login successful",
         description: "Welcome to the admin dashboard",
         variant: "default",
       });
-      navigate("/admin");
+      
+      // Trigger a custom event to update App.tsx state
+      window.dispatchEvent(new CustomEvent("auth:success"));
+      
+      // Redirect to admin dashboard
+      setTimeout(() => {
+        navigate("/admin");
+      }, 100);
     },
     onError: (error: Error) => {
       toast({
