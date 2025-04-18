@@ -106,11 +106,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
     
+    // Direct hardcoded admin authentication for stability
+    // This ensures login works regardless of database connection
+    if (username === 'admin1@gmail.com' && password === 'CircusMapping@12') {
+      console.log("Direct admin authentication successful");
+      return res.json({ 
+        success: true,
+        token: 'admin-token',
+        user: {
+          id: 'admin-id',
+          username: 'admin1@gmail.com'
+        }
+      });
+    }
+    
     try {
-      // First try using MongoDB
+      // If not the admin user, try normal authentication flow
       let user;
       try {
-        user = await User.findOne({ username });
+        // Set a shorter timeout for MongoDB query
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('MongoDB timeout')), 2000)
+        );
+        user = await Promise.race([
+          User.findOne({ username }),
+          timeoutPromise
+        ]);
       } catch (mongoError: any) {
         // MongoDB error, try fallback storage
         console.log("MongoDB error, using fallback storage for login:", mongoError.message);
@@ -118,19 +139,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (!user) {
-        // Special case for admin login with in-memory storage
-        if (username === 'admin1@gmail.com' && password === 'CircusMapping@12') {
-          // Create a one-time user object for this session
-          return res.json({ 
-            success: true,
-            token: 'admin-token',
-            user: {
-              id: 'admin-id',
-              username: 'admin1@gmail.com'
-            }
-          });
-        }
-        
         return res.status(401).json({ 
           success: false, 
           message: "Invalid credentials" 
