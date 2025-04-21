@@ -1,33 +1,41 @@
 import React, { useState } from "react";
 import MapView from "@/components/MapView";
 import TimeSlider from "@/components/TimeSlider";
-
+import { useQuery } from "@tanstack/react-query";
 const Home: React.FC = () => {
-  const [currentDate, setCurrentDate] = useState<Date>(new Date("2025-04-01"));
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  const togglePlayPause = () => {
-    setIsPlaying(!isPlaying);
-  };
-
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  
+  // Fetch date range for the time slider
+  const { data: dateRange } = useQuery<{startDate: string, endDate: string}>({
+    queryKey: ["/api/shows/date-range"],
+  });
+  
+  // Handle date change from the time slider
   const handleDateChange = (date: Date) => {
     setCurrentDate(date);
+  };
+  
+  // Toggle play/pause
+  const handleTogglePlay = () => {
+    setIsPlaying(prev => !prev);
   };
 
   return (
     <div className="relative h-full">
       {/* Main content with padding to accommodate fixed sidebar and sliders */}
       <div className="lg:ml-64 pb-[100px]"> {/* 100px bottom padding for time slider */}
-        <MapView 
-          currentDate={currentDate}
-        />
+      <MapView 
+        currentDate={currentDate} 
+        isPlaying={isPlaying} 
+      />
       </div>
       
-      <TimeSlider 
+      <TimeSlider
         currentDate={currentDate}
         onDateChange={handleDateChange}
         isPlaying={isPlaying}
-        onTogglePlay={togglePlayPause}
+        onTogglePlay={handleTogglePlay}
       />
       
       {/* Mobile Bottom Navigation - Fixed to bottom on mobile only */}

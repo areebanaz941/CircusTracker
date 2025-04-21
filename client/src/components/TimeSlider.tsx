@@ -7,18 +7,38 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 
+// Define interface for POI objects (optional if you're not using TypeScript)
+interface POI {
+  _id: string;
+  circusName: string;
+  venueName: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  latitude: string;
+  longitude: string;
+  showDate: string;
+  coords: [number, number];
+  [key: string]: any; // Allow for additional properties
+}
+
 interface TimeSliderProps {
   currentDate: Date;
   onDateChange: (date: Date) => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  pois?: POI[]; // Make pois optional
+  onFilteredPoisChange?: (filteredPois: POI[]) => void; // Make callback optional
 }
 
 const TimeSlider: React.FC<TimeSliderProps> = ({ 
   currentDate, 
   onDateChange,
   isPlaying,
-  onTogglePlay
+  onTogglePlay,
+  pois,
+  onFilteredPoisChange
 }) => {
   const animationRef = useRef<number>();
   const lastUpdateRef = useRef<number>(0);
@@ -39,6 +59,24 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
   
   // Calculate the current day as a percentage of the total range
   const currentValue = Math.floor((currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  // Filter POIs based on current date
+  useEffect(() => {
+    // Make sure pois and callback are defined before proceeding
+    if (!pois || !onFilteredPoisChange) return;
+    
+    // Convert current date to YYYY-MM-DD format for comparison
+    const currentDateStr = currentDate.toISOString().split('T')[0];
+    
+    // Filter POIs that match the current date
+    const filtered = pois.filter(poi => {
+      const poiDate = new Date(poi.showDate).toISOString().split('T')[0];
+      return poiDate === currentDateStr;
+    });
+    
+    // Send filtered POIs to parent component
+    onFilteredPoisChange(filtered);
+  }, [currentDate, pois, onFilteredPoisChange]);
   
   // Animation logic for the time slider with speed control
   useEffect(() => {
@@ -107,7 +145,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
   
   // Calculate the list of dates with events for the selected month
   const getDatesWithEvents = () => {
-    if (!selectedMonth) return [];
+    if (!selectedMonth || !pois || pois.length === 0) return [];
     
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
@@ -117,18 +155,26 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
     // Last day of selected month
     const lastDay = new Date(year, month + 1, 0);
     
-    // Get all dates in the selected month that fall within the range
-    const dates = [];
-    const currentDay = new Date(firstDay);
+    // Get all unique dates in the selected month that have POIs
+    const datesWithPois = new Set();
     
-    while (currentDay <= lastDay) {
-      if (currentDay >= startDate && currentDay <= endDate) {
-        dates.push(new Date(currentDay));
+    pois.forEach(poi => {
+      const poiDate = new Date(poi.showDate);
+      if (
+        poiDate.getFullYear() === year && 
+        poiDate.getMonth() === month &&
+        poiDate >= startDate && 
+        poiDate <= endDate
+      ) {
+        datesWithPois.add(new Date(
+          poiDate.getFullYear(), 
+          poiDate.getMonth(), 
+          poiDate.getDate()
+        ));
       }
-      currentDay.setDate(currentDay.getDate() + 1);
-    }
+    });
     
-    return dates;
+    return Array.from(datesWithPois) as Date[];
   };
   
   // Calculate current period - for displaying the selected month/date
