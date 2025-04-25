@@ -10,7 +10,7 @@ export const useAuth = () => {
   
   // Admin login
   const login = (password: string): boolean => {
-    if (password === "admin123") {
+    if (password === "CircusMapping@12") {
       setIsAdmin(true);
       return true;
     } else {
