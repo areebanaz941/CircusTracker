@@ -30,13 +30,33 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
 
   // Custom function to create icons based on circus name
   const createCustomIcon = (L: any, circusName: string, isActive: boolean = false) => {
-    // Use ESC.jpg for ESC circus
-    if (circusName === "ESC") {
+    // Using a consistent icon size with a bit larger dimensions
+    const iconSize = [40, 40];
+    const iconAnchor = [20, 40];
+    const popupAnchor = [0, -40];
+    
+    // Map of circus names to their corresponding icon files
+    const circusIcons: Record<string, string> = {
+      "ALL AMERICAN CIRCUS": '/ALL AMERICAN CIRCUS.png',
+      "CANADAS CIRCUS SPECTACULAR": '/CANADAS CIRCUS SPECTACULAR.png',
+      "CIRQUE DE PARIS": '/CIRQUE DE PARIS.png',
+      "EUROPA SUPER CIRCUS": '/EUROPA SUPER CIRCUS.webp',
+      "GREAT BENJAMIN CIRCUS": '/GREAT BENJAMIN CIRCUS.jpg',
+      "GREAT PAGES CIRCUS": '/GREAT PAGES CIRCUS.webp',
+      "JORDAN WORLD CIRCUS": '/JORDAN WORLD CIRCUS.jpg',
+      "MONSTER TRUCKS MOST WANTED": '/MONSTER TRUCKS MOST WANTED.webp',
+      "ROYAL HANNEFORD CIRCUS": '/ROYAL HANNEFORD CIRCUS.webp',
+      "ZERBINI FAMILY CIRCUS": '/ZERBINI FAMILY CIRCUS.png',
+      "MOTO XTREME CIRCUS": '/MOTO XTREME CIRCUS.png',
+    };
+
+    // Check if we have a custom icon for this circus
+    if (circusIcons[circusName]) {
       return L.icon({
-        iconUrl: '/ESC.jpg', // Adjust the path based on your public directory structure
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-        popupAnchor: [0, -32],
+        iconUrl: circusIcons[circusName],
+        iconSize,
+        iconAnchor,
+        popupAnchor,
         className: isActive ? 'active-marker' : ''
       });
     } else {
