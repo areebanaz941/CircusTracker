@@ -85,7 +85,10 @@ const requireAuth = async (req: Request, res: Response, next: Function) => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize admin user is now handled in storage.ts and db.ts
-  
+  // Add this to the registerRoutes function
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
   // Login endpoint
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;

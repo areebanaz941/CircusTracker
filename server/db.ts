@@ -1,9 +1,11 @@
+// Modified version of your db.ts file
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 
-// MongoDB Connection URI
-const MONGODB_URI = 'mongodb+srv://areebanaz4848:Pakistan123@cluster0.zdijmho.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+// Use environment variable for MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/circus';
 
+// Rest of your code remains the same...
 // Connect to MongoDB
 export const connectDB = async () => {
   try {

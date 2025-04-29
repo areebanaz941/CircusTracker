@@ -7,3 +7,14 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: MONGODB_URI
+        value: mongodb+srv://areebanaz4848:Pakistan123@cluster0.zdijmho.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - key: PORT
+        value: 5000
+    healthCheckPath: /api/health
+    plan: free
+
+# If using Render's MongoDB (optional)
+databases:
+  - name: circus-db
+    plan: free
