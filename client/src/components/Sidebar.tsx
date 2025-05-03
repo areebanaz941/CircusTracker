@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDate } from "@/lib/dateUtils";
 import { CircusVenue, CircusShowWithCoords } from "@shared/schema";
@@ -7,10 +7,17 @@ interface SidebarProps {
   isOpen: boolean;
   isAdmin: boolean;
   currentView: "user" | "admin";
+  onCircusVisibilityChange?: (hiddenCircuses: string[]) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
-  const [activeTab, setActiveTab] = useState<'map' | 'list' | 'filter'>('map');
+const Sidebar: React.FC<SidebarProps> = ({ 
+  isOpen, 
+  isAdmin, 
+  currentView,
+  onCircusVisibilityChange 
+}) => {
+  const [activeTab, setActiveTab] = useState<'map' | 'list' | 'filter' | 'checklist'>('map');
+  const [hiddenCircuses, setHiddenCircuses] = useState<string[]>([]);
   
   // Get current venues (grouped by location)
   const { data: venues } = useQuery<CircusVenue[]>({
@@ -29,6 +36,35 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
     queryKey: ["/api/uploads"],
     enabled: currentView === "admin" && isAdmin,
   });
+
+  // Get unique circus names from all shows
+  const uniqueCircusNames = React.useMemo(() => {
+    if (!allShows) return [];
+    const names = new Set(allShows.map(show => show.circusName));
+    return Array.from(names).sort();
+  }, [allShows]);
+
+  // Handle checkbox changes
+  const handleCircusToggle = (circusName: string) => {
+    console.log('Toggling circus:', circusName);
+    setHiddenCircuses(prev => {
+      const newHiddenCircuses = prev.includes(circusName)
+        ? prev.filter(name => name !== circusName)
+        : [...prev, circusName];
+      
+      console.log('New hidden circuses:', newHiddenCircuses);
+      
+      // Notify parent component about visibility changes
+      if (onCircusVisibilityChange) {
+        console.log('Calling parent callback with:', newHiddenCircuses);
+        onCircusVisibilityChange(newHiddenCircuses);
+      } else {
+        console.log('No callback function provided!');
+      }
+      
+      return newHiddenCircuses;
+    });
+  };
 
   return (
     <aside 
@@ -73,6 +109,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
                 >
                   <i className="fas fa-filter mr-3"></i>
                   <span>Filter Shows</span>
+                </a>
+                <a 
+                  href="#" 
+                  className={`flex items-center px-4 py-2 rounded-md group ${activeTab === 'checklist' ? 'text-white bg-primary-dark' : 'text-gray-300 hover:text-white hover:bg-navy-light'}`}
+                  onClick={() => setActiveTab('checklist')}
+                >
+                  <i className="fas fa-check-square mr-3"></i>
+                  <span>Show/Hide Circus</span>
                 </a>
               </nav>
             </div>
@@ -144,6 +188,37 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, isAdmin, currentView }) => {
                     Apply Filters
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Checklist Content - Show/Hide Circus */}
+            {activeTab === 'checklist' && (
+              <div className="px-4">
+                <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider mb-3">Show/Hide Circus</h2>
+                <p className="text-xs text-gray-400 mb-4">Checked circuses will be hidden from the map</p>
+                <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto">
+                  {uniqueCircusNames.map(circusName => (
+                    <label key={circusName} className="flex items-center p-2 bg-navy-light rounded-md hover:bg-opacity-80 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hiddenCircuses.includes(circusName)}
+                        onChange={() => handleCircusToggle(circusName)}
+                        className="form-checkbox h-4 w-4 text-primary rounded border-gray-600 bg-navy-light focus:ring-primary focus:ring-offset-0"
+                      />
+                      <span className="ml-3 text-sm text-white">{circusName}</span>
+                    </label>
+                  ))}
+                  {uniqueCircusNames.length === 0 && (
+                    <div className="text-gray-400 text-sm p-2">No circus names found</div>
+                  )}
+                </div>
+                {hiddenCircuses.length > 0 && (
+                  <div className="mt-4 p-2 bg-navy-light rounded-md">
+                    <p className="text-xs text-gray-400">
+                      {hiddenCircuses.length} circus{hiddenCircuses.length !== 1 ? 'es' : ''} hidden
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
