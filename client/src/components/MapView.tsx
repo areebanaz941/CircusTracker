@@ -7,6 +7,7 @@ import { createCircusIcon } from "@/lib/circusIcon";
 interface MapViewProps {
   currentDate: Date;
   isPlaying: boolean;
+  hiddenCircuses?: string[]; // Add this prop to receive hidden circuses from parent
 }
 
 declare global {
@@ -15,7 +16,8 @@ declare global {
   }
 }
 
-const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
+const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying, hiddenCircuses = [] }) => {
+  console.log('MapView received hiddenCircuses:', hiddenCircuses);
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -175,6 +177,53 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
     }
   }, [shows]);
 
+  // Update markers visibility based on hidden circuses
+  useEffect(() => {
+    console.log('Hidden circuses effect triggered. Hidden:', hiddenCircuses);
+    
+    if (!leafletMap.current || !window.L || Object.keys(markersByDate.current).length === 0) {
+      console.log('Effect returning early - map not ready');
+      return;
+    }
+    
+    const map = leafletMap.current;
+    const currentDateString = currentDate.toISOString().split('T')[0];
+    
+    // Update visibility for all markers based on hiddenCircuses
+    let hiddenCount = 0;
+    let shownCount = 0;
+    
+    Object.values(markersByDate.current).forEach(markersOnDate => {
+      markersOnDate.forEach(({ marker, data }) => {
+        const isHidden = hiddenCircuses.includes(data.circusName);
+        const markerDateString = new Date(data.showDate).toISOString().split('T')[0];
+        
+        if (isHidden) {
+          // Remove marker from map if circus is hidden
+          map.removeLayer(marker);
+          hiddenCount++;
+        } else {
+          // Show marker if circus is not hidden and conditions are met
+          if (isPlaying) {
+            // If playing, only show markers for the current date
+            if (markerDateString === currentDateString) {
+              map.addLayer(marker);
+              shownCount++;
+            } else {
+              map.removeLayer(marker);
+            }
+          } else {
+            // If not playing, show all markers (that aren't hidden)
+            map.addLayer(marker);
+            shownCount++;
+          }
+        }
+      });
+    });
+    
+    console.log(`Markers hidden: ${hiddenCount}, shown: ${shownCount}`);
+  }, [hiddenCircuses, currentDate, isPlaying]);
+
   // Update markers display when current date changes or play state changes
   useEffect(() => {
     if (!leafletMap.current || !shows || !window.L || Object.keys(markersByDate.current).length === 0) return;
@@ -193,6 +242,12 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
         // If we're starting to play, hide all markers except the current date
         Object.keys(markersByDate.current).forEach(dateStr => {
           markersByDate.current[dateStr].forEach(({ marker, data }) => {
+            // Check if this circus is hidden
+            if (hiddenCircuses.includes(data.circusName)) {
+              map.removeLayer(marker);
+              return;
+            }
+            
             if (dateStr === currentDateString) {
               const activeIcon = createCustomIcon(L, data.circusName, true);
               marker.setIcon(activeIcon);
@@ -206,7 +261,8 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
         
         // Focus map on visible markers
         if (markersByDate.current[currentDateString]) {
-          const activeMarkers = markersByDate.current[currentDateString];
+          const activeMarkers = markersByDate.current[currentDateString]
+            .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
           if (activeMarkers.length > 0) {
             const group = L.featureGroup(activeMarkers.map(item => item.marker));
             map.flyToBounds(group.getBounds(), { padding: [50, 50], duration: 0.5 });
@@ -216,6 +272,12 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
         // If we're stopping playback, show all markers again but highlight current date
         Object.keys(markersByDate.current).forEach(dateStr => {
           markersByDate.current[dateStr].forEach(({ marker, data }) => {
+            // Check if this circus is hidden
+            if (hiddenCircuses.includes(data.circusName)) {
+              map.removeLayer(marker);
+              return;
+            }
+            
             if (dateStr === currentDateString) {
               const activeIcon = createCustomIcon(L, data.circusName, true);
               marker.setIcon(activeIcon);
@@ -229,9 +291,16 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
           });
         });
         
-        // Fit map to show all markers
-        if (markersRef.current.length > 0) {
-          const group = L.featureGroup(markersRef.current);
+        // Fit map to show all visible markers
+        const visibleMarkers = markersRef.current.filter(marker => {
+          const markerData = Object.values(markersByDate.current)
+            .flat()
+            .find(item => item.marker === marker);
+          return markerData && !hiddenCircuses.includes(markerData.data.circusName);
+        });
+        
+        if (visibleMarkers.length > 0) {
+          const group = L.featureGroup(visibleMarkers);
           map.fitBounds(group.getBounds(), { padding: [50, 50] });
         }
       }
@@ -245,9 +314,10 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
         });
       }
       
-      // Show current date markers
+      // Show current date markers (if not hidden)
       if (markersByDate.current[currentDateString]) {
-        const activeMarkers = markersByDate.current[currentDateString];
+        const activeMarkers = markersByDate.current[currentDateString]
+          .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
         
         activeMarkers.forEach(({ marker, data }) => {
           const activeIcon = createCustomIcon(L, data.circusName, true);
@@ -290,15 +360,18 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
       // Reset previous active markers
       if (previousDateString && markersByDate.current[previousDateString]) {
         markersByDate.current[previousDateString].forEach(({ marker, data }) => {
-          const inactiveIcon = createCustomIcon(L, data.circusName, false);
-          marker.setIcon(inactiveIcon);
-          marker.setOpacity(0.6);
+          if (!hiddenCircuses.includes(data.circusName)) {
+            const inactiveIcon = createCustomIcon(L, data.circusName, false);
+            marker.setIcon(inactiveIcon);
+            marker.setOpacity(0.6);
+          }
         });
       }
       
-      // Highlight new active markers
+      // Highlight new active markers (if not hidden)
       if (markersByDate.current[currentDateString]) {
-        const activeMarkers = markersByDate.current[currentDateString];
+        const activeMarkers = markersByDate.current[currentDateString]
+          .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
         
         activeMarkers.forEach(({ marker, data }) => {
           const activeIcon = createCustomIcon(L, data.circusName, true);
@@ -338,7 +411,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying }) => {
     
     setPreviousDateString(currentDateString);
     setPreviousPlayingState(isPlaying);
-  }, [shows, currentDate, previousDateString, isPlaying, previousPlayingState]);
+  }, [shows, currentDate, previousDateString, isPlaying, previousPlayingState, hiddenCircuses]);
 
   // Update map size when window resizes
   useEffect(() => {

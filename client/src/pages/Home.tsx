@@ -1,10 +1,16 @@
 import React, { useState } from "react";
 import MapView from "@/components/MapView";
 import TimeSlider from "@/components/TimeSlider";
+import Sidebar from "@/components/Sidebar";
 import { useQuery } from "@tanstack/react-query";
+
 const Home: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [hiddenCircuses, setHiddenCircuses] = useState<string[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [currentView, setCurrentView] = useState<'user' | 'admin'>('user');
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   
   // Fetch date range for the time slider
   const { data: dateRange } = useQuery<{startDate: string, endDate: string}>({
@@ -21,14 +27,29 @@ const Home: React.FC = () => {
     setIsPlaying(prev => !prev);
   };
 
+  // Handle circus visibility changes
+  const handleCircusVisibilityChange = (hidden: string[]) => {
+    console.log('Home received hidden circuses:', hidden);
+    setHiddenCircuses(hidden);
+  };
+
   return (
     <div className="relative h-full">
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        isAdmin={isAdmin}
+        currentView={currentView}
+        onCircusVisibilityChange={handleCircusVisibilityChange}
+      />
+
       {/* Main content with padding to accommodate fixed sidebar and sliders */}
       <div className="lg:ml-64 pb-[100px]"> {/* 100px bottom padding for time slider */}
-      <MapView 
-        currentDate={currentDate} 
-        isPlaying={isPlaying} 
-      />
+        <MapView 
+          currentDate={currentDate} 
+          isPlaying={isPlaying}
+          hiddenCircuses={hiddenCircuses}
+        />
       </div>
       
       <TimeSlider
@@ -61,6 +82,8 @@ const Home: React.FC = () => {
           </button>
         </div>
       </div>
+      
+      
     </div>
   );
 };
