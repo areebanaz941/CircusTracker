@@ -45,26 +45,28 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [allShows]);
 
   // Handle checkbox changes
-  const handleCircusToggle = (circusName: string) => {
-    console.log('Toggling circus:', circusName);
-    setHiddenCircuses(prev => {
-      const newHiddenCircuses = prev.includes(circusName)
-        ? prev.filter(name => name !== circusName)
-        : [...prev, circusName];
-      
-      console.log('New hidden circuses:', newHiddenCircuses);
-      
-      // Notify parent component about visibility changes
-      if (onCircusVisibilityChange) {
-        console.log('Calling parent callback with:', newHiddenCircuses);
-        onCircusVisibilityChange(newHiddenCircuses);
-      } else {
-        console.log('No callback function provided!');
-      }
-      
-      return newHiddenCircuses;
-    });
-  };
+  // In Sidebar.tsx - modify the handleCircusToggle function
+const handleCircusToggle = (circusName: string) => {
+  console.log('Toggling circus:', circusName);
+  setHiddenCircuses(prev => {
+    // Reverse the logic here!
+    const newHiddenCircuses = prev.includes(circusName)
+      ? prev.filter(name => name !== circusName) // If it was hidden, show it (remove from hidden list)
+      : [...prev, circusName];           // If it was shown, hide it (add to hidden list)
+    
+    console.log('New hidden circuses:', newHiddenCircuses);
+    
+    // Notify parent component about visibility changes
+    if (onCircusVisibilityChange) {
+      console.log('Calling parent callback with:', newHiddenCircuses);
+      onCircusVisibilityChange(newHiddenCircuses);
+    } else {
+      console.log('No callback function provided!');
+    }
+    
+    return newHiddenCircuses;
+  });
+};
 
   return (
     <aside 
@@ -192,35 +194,36 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
 
             {/* Checklist Content - Show/Hide Circus */}
-            {activeTab === 'checklist' && (
-              <div className="px-4">
-                <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider mb-3">Show/Hide Circus</h2>
-                <p className="text-xs text-gray-400 mb-4">Checked circuses will be hidden from the map</p>
-                <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto">
-                  {uniqueCircusNames.map(circusName => (
-                    <label key={circusName} className="flex items-center p-2 bg-navy-light rounded-md hover:bg-opacity-80 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hiddenCircuses.includes(circusName)}
-                        onChange={() => handleCircusToggle(circusName)}
-                        className="form-checkbox h-4 w-4 text-primary rounded border-gray-600 bg-navy-light focus:ring-primary focus:ring-offset-0"
-                      />
-                      <span className="ml-3 text-sm text-white">{circusName}</span>
-                    </label>
-                  ))}
-                  {uniqueCircusNames.length === 0 && (
-                    <div className="text-gray-400 text-sm p-2">No circus names found</div>
-                  )}
-                </div>
-                {hiddenCircuses.length > 0 && (
-                  <div className="mt-4 p-2 bg-navy-light rounded-md">
-                    <p className="text-xs text-gray-400">
-                      {hiddenCircuses.length} circus{hiddenCircuses.length !== 1 ? 'es' : ''} hidden
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Checklist Content - Show/Hide Circus */}
+{activeTab === 'checklist' && (
+  <div className="px-4">
+    <h2 className="text-xs uppercase font-semibold text-gray-400 tracking-wider mb-3">Show/Hide Circus</h2>
+    <p className="text-xs text-gray-400 mb-4">Unchecked circuses will be hidden from the map</p>
+    <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto">
+      {uniqueCircusNames.map(circusName => (
+        <label key={circusName} className="flex items-center p-2 bg-navy-light rounded-md hover:bg-opacity-80 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!hiddenCircuses.includes(circusName)} // Reverse the checked state!
+            onChange={() => handleCircusToggle(circusName)}
+            className="form-checkbox h-4 w-4 text-primary rounded border-gray-600 bg-navy-light focus:ring-primary focus:ring-offset-0"
+          />
+          <span className="ml-3 text-sm text-white">{circusName}</span>
+        </label>
+      ))}
+      {uniqueCircusNames.length === 0 && (
+        <div className="text-gray-400 text-sm p-2">No circus names found</div>
+      )}
+    </div>
+    {hiddenCircuses.length > 0 && (
+      <div className="mt-4 p-2 bg-navy-light rounded-md">
+        <p className="text-xs text-gray-400">
+          {hiddenCircuses.length} circus{hiddenCircuses.length !== 1 ? 'es' : ''} hidden
+        </p>
+      </div>
+    )}
+  </div>
+)}
           </div>
         )}
         

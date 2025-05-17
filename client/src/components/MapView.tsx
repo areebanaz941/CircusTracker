@@ -24,6 +24,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying, hiddenCircuse
   const markersByDate = useRef<Record<string, any[]>>({});
   const [previousDateString, setPreviousDateString] = useState<string>("");
   const [previousPlayingState, setPreviousPlayingState] = useState<boolean>(false);
+  const [setHiddenCircuses] = useState<string[]>([]);
   
   // Fetch all circus shows
   const { data: shows, isLoading } = useQuery<CircusShowWithCoords[]>({
@@ -48,7 +49,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying, hiddenCircuse
       "JORDAN WORLD CIRCUS": '/JORDAN WORLD CIRCUS.jpg',
       "MONSTER TRUCKS MOST WANTED": '/MONSTER TRUCKS MOST WANTED.webp',
       "ROYAL HANNEFORD CIRCUS": '/ROYAL HANNEFORD CIRCUS.webp',
-      "ZERBINI FAMILY CIRCUS": '/ZERBINI FAMILY CIRCUS.png',
+      "ZERBINI FAMILY CIRCUS": '/ZERBINBI FAMILY CIRCUS.png',
       "MOTO XTREME CIRCUS": '/MOTO XTREME CIRCUS.png',
     };
 
@@ -225,193 +226,178 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying, hiddenCircuse
   }, [hiddenCircuses, currentDate, isPlaying]);
 
   // Update markers display when current date changes or play state changes
-  useEffect(() => {
-    if (!leafletMap.current || !shows || !window.L || Object.keys(markersByDate.current).length === 0) return;
-    
-    const L = window.L;
-    const map = leafletMap.current;
-    const currentDateString = currentDate.toISOString().split('T')[0];
-    const playStateChanged = isPlaying !== previousPlayingState;
-    
-    // If date hasn't changed and play state hasn't changed, do nothing
-    if (currentDateString === previousDateString && !playStateChanged) return;
-    
-    // When play state changes, we need to handle visibility for all markers
-    if (playStateChanged) {
-      if (isPlaying) {
-        // If we're starting to play, hide all markers except the current date
-        Object.keys(markersByDate.current).forEach(dateStr => {
-          markersByDate.current[dateStr].forEach(({ marker, data }) => {
-            // Check if this circus is hidden
-            if (hiddenCircuses.includes(data.circusName)) {
-              map.removeLayer(marker);
-              return;
-            }
-            
-            if (dateStr === currentDateString) {
-              const activeIcon = createCustomIcon(L, data.circusName, true);
-              marker.setIcon(activeIcon);
-              marker.setOpacity(1.0);
-              map.addLayer(marker);
-            } else {
-              map.removeLayer(marker);
-            }
-          });
-        });
-        
-        // Focus map on visible markers
-        if (markersByDate.current[currentDateString]) {
-          const activeMarkers = markersByDate.current[currentDateString]
-            .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
-          if (activeMarkers.length > 0) {
-            const group = L.featureGroup(activeMarkers.map(item => item.marker));
-            map.flyToBounds(group.getBounds(), { padding: [50, 50], duration: 0.5 });
+  // Update markers display when current date changes or play state changes
+useEffect(() => {
+  if (!leafletMap.current || !shows || !window.L || Object.keys(markersByDate.current).length === 0) return;
+  
+  const L = window.L;
+  const map = leafletMap.current;
+  const currentDateString = currentDate.toISOString().split('T')[0];
+  const playStateChanged = isPlaying !== previousPlayingState;
+  
+  // If date hasn't changed and play state hasn't changed, do nothing
+  if (currentDateString === previousDateString && !playStateChanged) return;
+  
+  // When play state changes, we need to handle visibility for all markers
+  if (playStateChanged) {
+    if (isPlaying) {
+      // If we're starting to play, hide all markers except the current date
+      Object.keys(markersByDate.current).forEach(dateStr => {
+        markersByDate.current[dateStr].forEach(({ marker, data }) => {
+          // Check if this circus is hidden
+          if (hiddenCircuses.includes(data.circusName)) {
+            map.removeLayer(marker);
+            return;
           }
-        }
-      } else {
-        // If we're stopping playback, show all markers again but highlight current date
-        Object.keys(markersByDate.current).forEach(dateStr => {
-          markersByDate.current[dateStr].forEach(({ marker, data }) => {
-            // Check if this circus is hidden
-            if (hiddenCircuses.includes(data.circusName)) {
-              map.removeLayer(marker);
-              return;
-            }
-            
-            if (dateStr === currentDateString) {
-              const activeIcon = createCustomIcon(L, data.circusName, true);
-              marker.setIcon(activeIcon);
-              marker.setOpacity(1.0);
-            } else {
-              const inactiveIcon = createCustomIcon(L, data.circusName, false);
-              marker.setIcon(inactiveIcon);
-              marker.setOpacity(0.6);
-            }
+          
+          if (dateStr === currentDateString) {
+            const activeIcon = createCustomIcon(L, data.circusName, true);
+            marker.setIcon(activeIcon);
+            marker.setOpacity(1.0);
             map.addLayer(marker);
-          });
+          } else {
+            map.removeLayer(marker);
+          }
         });
-        
-        // Fit map to show all visible markers
-        const visibleMarkers = markersRef.current.filter(marker => {
-          const markerData = Object.values(markersByDate.current)
-            .flat()
-            .find(item => item.marker === marker);
-          return markerData && !hiddenCircuses.includes(markerData.data.circusName);
-        });
-        
-        if (visibleMarkers.length > 0) {
-          const group = L.featureGroup(visibleMarkers);
-          map.fitBounds(group.getBounds(), { padding: [50, 50] });
-        }
-      }
-    }
-    // Date has changed while playing
-    else if (isPlaying && currentDateString !== previousDateString) {
-      // Hide previous date markers
-      if (previousDateString && markersByDate.current[previousDateString]) {
-        markersByDate.current[previousDateString].forEach(({ marker }) => {
-          map.removeLayer(marker);
-        });
-      }
+      });
       
-      // Show current date markers (if not hidden)
-      if (markersByDate.current[currentDateString]) {
-        const activeMarkers = markersByDate.current[currentDateString]
-          .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
-        
-        activeMarkers.forEach(({ marker, data }) => {
-          const activeIcon = createCustomIcon(L, data.circusName, true);
-          marker.setIcon(activeIcon);
-          marker.setOpacity(1.0);
-          map.addLayer(marker);
+      // REMOVED: Focus map on visible markers - Don't zoom in when playing
+    } else {
+      // If we're stopping playback, show all markers again but highlight current date
+      Object.keys(markersByDate.current).forEach(dateStr => {
+        markersByDate.current[dateStr].forEach(({ marker, data }) => {
+          // Check if this circus is hidden
+          if (hiddenCircuses.includes(data.circusName)) {
+            map.removeLayer(marker);
+            return;
+          }
           
-          // Update popup content to show active status
-          const { circusName, venueName, address, city, state, zip, showDate } = data;
-          const showDateObj = new Date(showDate);
-          
-          const popupContent = `
-            <div class="circus-popup">
-              <div class="font-bold text-primary">${circusName}</div>
-              <div class="font-medium">${venueName}</div>
-              <div>${address}</div>
-              <div>${city}, ${state} ${zip}</div>
-              <div class="text-sm mt-2">
-                <span class="font-medium">Show date:</span> ${formatDate(showDateObj)}
-              </div>
-              <div class="text-xs mt-1 text-primary font-semibold">Active today!</div>
-              <div class="mt-2">
-                <button class="show-details-btn bg-primary text-white px-3 py-1 rounded text-xs">Show Details</button>
-              </div>
-            </div>
-          `;
-          
-          marker.bindPopup(popupContent);
-        });
-        
-        // If we have active markers, pan the map to show them
-        if (activeMarkers.length > 0) {
-          const group = L.featureGroup(activeMarkers.map(item => item.marker));
-          map.flyToBounds(group.getBounds(), { padding: [50, 50], duration: 0.5 });
-        }
-      }
-    }
-    // Date has changed while not playing - just update highlighting
-    else if (!isPlaying && currentDateString !== previousDateString) {
-      // Reset previous active markers
-      if (previousDateString && markersByDate.current[previousDateString]) {
-        markersByDate.current[previousDateString].forEach(({ marker, data }) => {
-          if (!hiddenCircuses.includes(data.circusName)) {
+          if (dateStr === currentDateString) {
+            const activeIcon = createCustomIcon(L, data.circusName, true);
+            marker.setIcon(activeIcon);
+            marker.setOpacity(1.0);
+          } else {
             const inactiveIcon = createCustomIcon(L, data.circusName, false);
             marker.setIcon(inactiveIcon);
             marker.setOpacity(0.6);
           }
+          map.addLayer(marker);
         });
-      }
+      });
       
-      // Highlight new active markers (if not hidden)
-      if (markersByDate.current[currentDateString]) {
-        const activeMarkers = markersByDate.current[currentDateString]
-          .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
-        
-        activeMarkers.forEach(({ marker, data }) => {
-          const activeIcon = createCustomIcon(L, data.circusName, true);
-          marker.setIcon(activeIcon);
-          marker.setOpacity(1.0);
-          
-          // Update popup content to show active status
-          const { circusName, venueName, address, city, state, zip, showDate } = data;
-          const showDateObj = new Date(showDate);
-          
-          const popupContent = `
-            <div class="circus-popup">
-              <div class="font-bold text-primary">${circusName}</div>
-              <div class="font-medium">${venueName}</div>
-              <div>${address}</div>
-              <div>${city}, ${state} ${zip}</div>
-              <div class="text-sm mt-2">
-                <span class="font-medium">Show date:</span> ${formatDate(showDateObj)}
-              </div>
-              <div class="text-xs mt-1 text-primary font-semibold">Active today!</div>
-              <div class="mt-2">
-                <button class="show-details-btn bg-primary text-white px-3 py-1 rounded text-xs">Show Details</button>
-              </div>
-            </div>
-          `;
-          
-          marker.bindPopup(popupContent);
-        });
-        
-        // If we have active markers, pan the map to show them
-        if (activeMarkers.length > 0) {
-          const group = L.featureGroup(activeMarkers.map(item => item.marker));
-          map.flyToBounds(group.getBounds(), { padding: [50, 50], duration: 0.5 });
-        }
+      // MODIFIED: Only fit bounds when stopping playback
+      const visibleMarkers = markersRef.current.filter(marker => {
+        const markerData = Object.values(markersByDate.current)
+          .flat()
+          .find(item => item.marker === marker);
+        return markerData && !hiddenCircuses.includes(markerData.data.circusName);
+      });
+      
+      if (visibleMarkers.length > 0) {
+        const group = L.featureGroup(visibleMarkers);
+        map.fitBounds(group.getBounds(), { padding: [50, 50] });
       }
     }
+  }
+  // Date has changed while playing
+  else if (isPlaying && currentDateString !== previousDateString) {
+    // Hide previous date markers
+    if (previousDateString && markersByDate.current[previousDateString]) {
+      markersByDate.current[previousDateString].forEach(({ marker }) => {
+        map.removeLayer(marker);
+      });
+    }
     
-    setPreviousDateString(currentDateString);
-    setPreviousPlayingState(isPlaying);
-  }, [shows, currentDate, previousDateString, isPlaying, previousPlayingState, hiddenCircuses]);
+    // Show current date markers (if not hidden)
+    if (markersByDate.current[currentDateString]) {
+      const activeMarkers = markersByDate.current[currentDateString]
+        .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
+      
+      activeMarkers.forEach(({ marker, data }) => {
+        const activeIcon = createCustomIcon(L, data.circusName, true);
+        marker.setIcon(activeIcon);
+        marker.setOpacity(1.0);
+        map.addLayer(marker);
+        
+        // Update popup content to show active status
+        const { circusName, venueName, address, city, state, zip, showDate } = data;
+        const showDateObj = new Date(showDate);
+        
+        const popupContent = `
+          <div class="circus-popup">
+            <div class="font-bold text-primary">${circusName}</div>
+            <div class="font-medium">${venueName}</div>
+            <div>${address}</div>
+            <div>${city}, ${state} ${zip}</div>
+            <div class="text-sm mt-2">
+              <span class="font-medium">Show date:</span> ${formatDate(showDateObj)}
+            </div>
+            <div class="text-xs mt-1 text-primary font-semibold">Active today!</div>
+            <div class="mt-2">
+              <button class="show-details-btn bg-primary text-white px-3 py-1 rounded text-xs">Show Details</button>
+            </div>
+          </div>
+        `;
+        
+        marker.bindPopup(popupContent);
+      });
+      
+      // REMOVED: Don't zoom when date changes during playback
+    }
+  }
+  // Date has changed while not playing - just update highlighting
+  else if (!isPlaying && currentDateString !== previousDateString) {
+    // Reset previous active markers
+    if (previousDateString && markersByDate.current[previousDateString]) {
+      markersByDate.current[previousDateString].forEach(({ marker, data }) => {
+        if (!hiddenCircuses.includes(data.circusName)) {
+          const inactiveIcon = createCustomIcon(L, data.circusName, false);
+          marker.setIcon(inactiveIcon);
+          marker.setOpacity(0.6);
+        }
+      });
+    }
+    
+    // Highlight new active markers (if not hidden)
+    if (markersByDate.current[currentDateString]) {
+      const activeMarkers = markersByDate.current[currentDateString]
+        .filter(({ data }) => !hiddenCircuses.includes(data.circusName));
+      
+      activeMarkers.forEach(({ marker, data }) => {
+        const activeIcon = createCustomIcon(L, data.circusName, true);
+        marker.setIcon(activeIcon);
+        marker.setOpacity(1.0);
+        
+        // Update popup content to show active status
+        const { circusName, venueName, address, city, state, zip, showDate } = data;
+        const showDateObj = new Date(showDate);
+        
+        const popupContent = `
+          <div class="circus-popup">
+            <div class="font-bold text-primary">${circusName}</div>
+            <div class="font-medium">${venueName}</div>
+            <div>${address}</div>
+            <div>${city}, ${state} ${zip}</div>
+            <div class="text-sm mt-2">
+              <span class="font-medium">Show date:</span> ${formatDate(showDateObj)}
+            </div>
+            <div class="text-xs mt-1 text-primary font-semibold">Active today!</div>
+            <div class="mt-2">
+              <button class="show-details-btn bg-primary text-white px-3 py-1 rounded text-xs">Show Details</button>
+            </div>
+          </div>
+        `;
+        
+        marker.bindPopup(popupContent);
+      });
+      
+      // REMOVED: Don't zoom when date changes while not playing
+    }
+  }
+  
+  setPreviousDateString(currentDateString);
+  setPreviousPlayingState(isPlaying);
+}, [shows, currentDate, previousDateString, isPlaying, previousPlayingState, hiddenCircuses]);
 
   // Update map size when window resizes
   useEffect(() => {
