@@ -24,7 +24,7 @@ const MapView: React.FC<MapViewProps> = ({ currentDate, isPlaying, hiddenCircuse
   const markersByDate = useRef<Record<string, any[]>>({});
   const [previousDateString, setPreviousDateString] = useState<string>("");
   const [previousPlayingState, setPreviousPlayingState] = useState<boolean>(false);
-  
+  const [setHiddenCircuses] = useState<string[]>([]);
   // Fetch all circus shows
   const { data: shows, isLoading } = useQuery<CircusShowWithCoords[]>({
     queryKey: ["/api/shows"],
