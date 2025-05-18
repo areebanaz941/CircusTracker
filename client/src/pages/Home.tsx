@@ -82,8 +82,6 @@ const Home: React.FC = () => {
           </button>
         </div>
       </div>
-      
-      
     </div>
   );
 };
